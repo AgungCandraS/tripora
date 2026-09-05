@@ -1,0 +1,27 @@
+{
+  "name": "tripora",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@12.0.2",
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "apps/worker",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "npm run db:generate -w @tripora/api",
+    "db:migrate": "npm run db:migrate -w @tripora/api",
+    "db:seed": "npm run db:seed -w @tripora/api",
+    "web": "npm run dev -w @tripora/web",
+    "api": "npm run dev -w @tripora/api"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.9.2"
+  }
+}

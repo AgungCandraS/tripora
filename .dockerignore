@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.turbo
+apps/web/.next
+apps/web/out
+apps/api/dist
+apps/worker/dist
+*.log
+coverage
+.env
+.env.local

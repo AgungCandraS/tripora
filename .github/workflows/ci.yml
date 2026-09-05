@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  verify:
+    name: typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test -w @tripora/api
+      - run: npm run build -w @tripora/api
+      - run: npm run build -w @tripora/web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000
+          NEXT_PUBLIC_DEMO_PAYMENTS: "false"
+
+  docker:
+    name: docker build (api · worker · web)
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - run: docker build -f apps/api/Dockerfile -t tripora-api:ci .
+      - run: docker build -f apps/worker/Dockerfile -t tripora-worker:ci .
+      - run: |
+          docker build -f apps/web/Dockerfile \
+            --build-arg NEXT_PUBLIC_API_URL=http://localhost:4000 \
+            --build-arg NEXT_PUBLIC_DEMO_PAYMENTS=false \
+            -t tripora-web:ci .

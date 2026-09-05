@@ -1,0 +1,788 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleCode {
+  GUEST
+  CUSTOMER
+  VENDOR_OWNER
+  VENDOR_STAFF
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum VendorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum MemberStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ActivityStatus {
+  DRAFT
+  IN_REVIEW
+  PUBLISHED
+  SUSPENDED
+  REJECTED
+}
+
+enum PackageStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ScheduleStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum OverrideStatus {
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  CONVERTED
+  EXPIRED
+  CANCELLED
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  PAID
+  CONFIRMED
+  CHECKED_IN
+  COMPLETED
+  CANCEL_REQUESTED
+  CANCELLED
+  EXPIRED
+  REFUND_PENDING
+  REFUNDED
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+enum TicketStatus {
+  ISSUED
+  USED
+  VOID
+}
+
+enum PromotionType {
+  PERCENT
+  NOMINAL
+}
+
+enum PromotionStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+}
+
+enum ReviewStatus {
+  PENDING
+  PUBLISHED
+  HIDDEN
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PROCESSED
+}
+
+enum SettlementStatus {
+  PENDING
+  RELEASED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum CmsStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  LOGIN
+  LOGOUT
+  WEBHOOK
+}
+
+model User {
+  id            String     @id @default(uuid()) @db.Uuid
+  email         String?    @unique
+  email_verified Boolean   @default(false) @map("email_verified")
+  phone         String?    @unique
+  password_hash String?    @map("password_hash")
+  full_name     String     @map("full_name")
+  status        UserStatus @default(ACTIVE)
+  created_at    DateTime   @default(now()) @map("created_at")
+  updated_at    DateTime   @updatedAt @map("updated_at")
+
+  roles         UserRole[]
+  refresh_tokens RefreshToken[]
+  verification_tokens EmailVerificationToken[]
+  wishlist      Wishlist[]
+  reviews       Review[]
+  bookings      Booking[]
+  notifications Notification[]
+  vendor_owned  Vendor[]       @relation("VendorOwner")
+  memberships   VendorMember[]
+
+  @@map("users")
+}
+
+model Role {
+  id   String   @id @default(uuid()) @db.Uuid
+  code RoleCode @unique
+  name String
+
+  users           UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id   String @id @default(uuid()) @db.Uuid
+  code String @unique
+  name String
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  role_id       String @map("role_id") @db.Uuid
+  permission_id String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@id([role_id, permission_id])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  user_id String @map("user_id") @db.Uuid
+  role_id String @map("role_id") @db.Uuid
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, role_id])
+  @@map("user_roles")
+}
+
+model EmailVerificationToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  user_id     String    @map("user_id") @db.Uuid
+  token_hash  String    @unique @map("token_hash")
+  expires_at  DateTime  @map("expires_at")
+  consumed_at DateTime? @map("consumed_at")
+  created_at  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("email_verification_tokens")
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid()) @db.Uuid
+  user_id    String   @map("user_id") @db.Uuid
+  token_hash String   @unique @map("token_hash")
+  expires_at DateTime @map("expires_at")
+  created_at DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
+
+model Vendor {
+  id                      String       @id @default(uuid()) @db.Uuid
+  owner_user_id           String       @map("owner_user_id") @db.Uuid
+  name                    String
+  slug                    String       @unique
+  description             String?
+  phone                   String?
+  email                   String?
+  status                  VendorStatus @default(PENDING)
+  commission_rate_default Decimal      @default(0.10) @map("commission_rate_default") @db.Decimal(5, 4)
+  bank_name               String?      @map("bank_name")
+  bank_account_number     String?      @map("bank_account_number")
+  bank_account_name       String?      @map("bank_account_name")
+  created_at              DateTime     @default(now()) @map("created_at")
+  updated_at              DateTime     @updatedAt @map("updated_at")
+
+  owner          User             @relation("VendorOwner", fields: [owner_user_id], references: [id])
+  members        VendorMember[]
+  documents      VendorDocument[]
+  activities     Activity[]
+  promotions     Promotion[]
+  earnings       VendorEarning[]
+  payouts        Payout[]
+  checkins       Checkin[]
+  bookings       Booking[]
+
+  @@index([owner_user_id])
+  @@map("vendors")
+}
+
+model VendorMember {
+  id        String       @id @default(uuid()) @db.Uuid
+  vendor_id String       @map("vendor_id") @db.Uuid
+  user_id   String       @map("user_id") @db.Uuid
+  role_name String       @map("role_name")
+  status    MemberStatus @default(ACTIVE)
+
+  vendor Vendor @relation(fields: [vendor_id], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([vendor_id, user_id])
+  @@index([user_id])
+  @@map("vendor_members")
+}
+
+model VendorDocument {
+  id                  String             @id @default(uuid()) @db.Uuid
+  vendor_id           String             @map("vendor_id") @db.Uuid
+  type                String
+  object_key          String             @map("object_key")
+  verification_status VerificationStatus @default(PENDING) @map("verification_status")
+
+  vendor Vendor @relation(fields: [vendor_id], references: [id], onDelete: Cascade)
+
+  @@index([vendor_id])
+  @@map("vendor_documents")
+}
+
+model Region {
+  id       String @id @default(uuid()) @db.Uuid
+  name     String
+  slug     String @unique
+  province String
+  country  String @default("Indonesia")
+
+  destinations Destination[]
+
+  @@map("regions")
+}
+
+model Destination {
+  id         String  @id @default(uuid()) @db.Uuid
+  region_id  String  @map("region_id") @db.Uuid
+  name       String
+  slug       String  @unique
+  description String?
+  address    String?
+  city       String?
+  province   String?
+  latitude   Decimal? @db.Decimal(10, 7)
+  longitude  Decimal? @db.Decimal(10, 7)
+  geom       Unsupported("geography(Point, 4326)")?
+  timezone   String     @default("Asia/Jakarta")
+
+  region     Region     @relation(fields: [region_id], references: [id])
+  activities Activity[]
+
+  @@map("destinations")
+}
+
+model Category {
+  id   String @id @default(uuid()) @db.Uuid
+  name String
+  slug String @unique
+
+  activity_categories ActivityCategory[]
+
+  @@map("categories")
+}
+
+model Activity {
+  id                      String         @id @default(uuid()) @db.Uuid
+  vendor_id               String         @map("vendor_id") @db.Uuid
+  destination_id          String         @map("destination_id") @db.Uuid
+  title                   String
+  slug                    String         @unique
+  short_description       String?        @map("short_description")
+  description             String?
+  status                  ActivityStatus @default(DRAFT)
+  address                 String?
+  meeting_point           String?        @map("meeting_point")
+  latitude                Decimal?       @db.Decimal(10, 7)
+  longitude               Decimal?       @db.Decimal(10, 7)
+  geom                    Unsupported("geography(Point, 4326)")?
+  min_age                 Int?           @map("min_age")
+  default_duration_minutes Int?          @map("default_duration_minutes")
+  rating_average          Decimal        @default(0) @map("rating_average") @db.Decimal(3, 2)
+  rating_count            Int            @default(0) @map("rating_count")
+  created_at              DateTime       @default(now()) @map("created_at")
+  updated_at              DateTime       @updatedAt @map("updated_at")
+
+  vendor       Vendor           @relation(fields: [vendor_id], references: [id])
+  destination  Destination      @relation(fields: [destination_id], references: [id])
+  categories   ActivityCategory[]
+  images       ActivityImage[]
+  packages     Package[]
+  bookings     Booking[]
+  reviews      Review[]
+  wishlist     Wishlist[]
+
+  @@index([slug])
+  @@index([vendor_id, status])
+  @@map("activities")
+}
+
+model ActivityImage {
+  id          String @id @default(uuid()) @db.Uuid
+  activity_id String @map("activity_id") @db.Uuid
+  object_key  String @map("object_key")
+  alt_text    String? @map("alt_text")
+  sort_order  Int    @default(0) @map("sort_order")
+
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  @@index([activity_id])
+  @@map("activity_images")
+}
+
+model ActivityCategory {
+  activity_id String @map("activity_id") @db.Uuid
+  category_id String @map("category_id") @db.Uuid
+
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [category_id], references: [id], onDelete: Cascade)
+
+  @@id([activity_id, category_id])
+  @@map("activity_categories")
+}
+
+model Package {
+  id               String        @id @default(uuid()) @db.Uuid
+  activity_id      String        @map("activity_id") @db.Uuid
+  name             String
+  description      String?
+  base_price       Int           @map("base_price")
+  duration_minutes Int?          @map("duration_minutes")
+  min_participants Int           @default(1) @map("min_participants")
+  max_participants Int           @default(20) @map("max_participants")
+  booking_cutoff_minutes Int     @default(120) @map("booking_cutoff_minutes")
+  status           PackageStatus @default(ACTIVE)
+
+  activity     Activity     @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  schedules    Schedule[]
+  reservations Reservation[]
+  bookings     Booking[]
+
+  @@index([activity_id])
+  @@map("packages")
+}
+
+model Schedule {
+  id           String         @id @default(uuid()) @db.Uuid
+  package_id   String         @map("package_id") @db.Uuid
+  day_of_week  Int?           @map("day_of_week")
+  specific_date DateTime?     @map("specific_date") @db.Date
+  start_time   String
+  end_time     String
+  capacity     Int
+  status       ScheduleStatus @default(ACTIVE)
+
+  package    Package            @relation(fields: [package_id], references: [id], onDelete: Cascade)
+  overrides  ScheduleOverride[]
+  reservations Reservation[]
+  bookings   Booking[]
+
+  @@index([package_id])
+  @@map("schedules")
+}
+
+model ScheduleOverride {
+  id                String         @id @default(uuid()) @db.Uuid
+  schedule_id       String         @map("schedule_id") @db.Uuid
+  date              DateTime       @db.Date
+  capacity_override Int?           @map("capacity_override")
+  status            OverrideStatus @default(ACTIVE)
+  reason            String?
+
+  schedule Schedule @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
+
+  @@index([schedule_id, date])
+  @@map("schedule_overrides")
+}
+
+model Reservation {
+  id                  String           @id @default(uuid()) @db.Uuid
+  public_token        String           @unique @map("public_token")
+  package_id          String           @map("package_id") @db.Uuid
+  schedule_id         String           @map("schedule_id") @db.Uuid
+  date                DateTime         @db.Date
+  participants        Int
+  customer_session_id String?          @map("customer_session_id")
+  status              ReservationStatus @default(ACTIVE)
+  expires_at          DateTime         @map("expires_at")
+  created_at          DateTime         @default(now()) @map("created_at")
+
+  package   Package   @relation(fields: [package_id], references: [id])
+  schedule  Schedule  @relation(fields: [schedule_id], references: [id])
+  booking   Booking?
+
+  @@index([expires_at, status])
+  @@map("reservations")
+}
+
+model Booking {
+  id                     String        @id @default(uuid()) @db.Uuid
+  booking_code           String        @unique @map("booking_code")
+  user_id                String?       @map("user_id") @db.Uuid
+  vendor_id              String        @map("vendor_id") @db.Uuid
+  activity_id            String        @map("activity_id") @db.Uuid
+  package_id             String        @map("package_id") @db.Uuid
+  schedule_id            String        @map("schedule_id") @db.Uuid
+  reservation_id         String?       @unique @map("reservation_id") @db.Uuid
+  booking_date           DateTime      @map("booking_date") @db.Date
+  slot_start             String        @map("slot_start")
+  participant_count      Int           @map("participant_count")
+  status                 BookingStatus @default(PENDING_PAYMENT)
+  subtotal               Int
+  discount_amount        Int           @default(0) @map("discount_amount")
+  platform_fee           Int           @default(0) @map("platform_fee")
+  total_amount           Int           @map("total_amount")
+  commission_rate_snapshot Decimal     @map("commission_rate_snapshot") @db.Decimal(5, 4)
+  commission_amount      Int           @map("commission_amount")
+  vendor_net_amount      Int           @map("vendor_net_amount")
+  cancellation_policy_snapshot Json?  @map("cancellation_policy_snapshot")
+  booker_name            String        @map("booker_name")
+  booker_email           String        @map("booker_email")
+  booker_phone           String        @map("booker_phone")
+  created_at             DateTime      @default(now()) @map("created_at")
+  updated_at             DateTime      @updatedAt @map("updated_at")
+
+  user         User?            @relation(fields: [user_id], references: [id])
+  vendor       Vendor           @relation(fields: [vendor_id], references: [id])
+  activity     Activity         @relation(fields: [activity_id], references: [id])
+  package      Package          @relation(fields: [package_id], references: [id])
+  schedule     Schedule         @relation(fields: [schedule_id], references: [id])
+  reservation  Reservation?     @relation(fields: [reservation_id], references: [id])
+  participants BookingParticipant[]
+  payment      Payment?
+  ticket       Ticket?
+  checkins     Checkin[]
+  review       Review?
+  bookings_refund Refund[]
+  earnings     VendorEarning[]
+  promotion_usage PromotionUsage[]
+  notifications Notification[]
+
+  @@index([booking_code])
+  @@index([vendor_id, booking_date])
+  @@index([status, created_at])
+  @@map("bookings")
+}
+
+model BookingParticipant {
+  id                  String  @id @default(uuid()) @db.Uuid
+  booking_id          String  @map("booking_id") @db.Uuid
+  name                String
+  age                 Int?
+  emergency_contact   String? @map("emergency_contact")
+  special_requirements String? @map("special_requirements")
+
+  booking Booking @relation(fields: [booking_id], references: [id], onDelete: Cascade)
+
+  @@index([booking_id])
+  @@map("booking_participants")
+}
+
+model Payment {
+  id                 String        @id @default(uuid()) @db.Uuid
+  booking_id         String        @unique @map("booking_id") @db.Uuid
+  provider           String
+  provider_reference String?       @map("provider_reference")
+  amount             Int
+  status             PaymentStatus @default(PENDING)
+  paid_at            DateTime?     @map("paid_at")
+
+  booking Booking        @relation(fields: [booking_id], references: [id])
+  events  PaymentEvent[]
+  refunds Refund[]
+
+  @@index([provider_reference])
+  @@map("payments")
+}
+
+model PaymentEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  payment_id       String   @map("payment_id") @db.Uuid
+  provider_event_id String  @unique @map("provider_event_id")
+  event_type       String   @map("event_type")
+  raw_payload      Json     @map("raw_payload")
+  received_at      DateTime @default(now()) @map("received_at")
+
+  payment Payment @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+
+  @@index([payment_id])
+  @@map("payment_events")
+}
+
+model Ticket {
+  id         String       @id @default(uuid()) @db.Uuid
+  booking_id String       @unique @map("booking_id") @db.Uuid
+  token_hash String       @unique @map("token_hash")
+  status     TicketStatus @default(ISSUED)
+  issued_at  DateTime     @default(now()) @map("issued_at")
+  used_at    DateTime?    @map("used_at")
+
+  booking  Booking    @relation(fields: [booking_id], references: [id])
+  checkins Checkin[]
+
+  @@map("tickets")
+}
+
+model Checkin {
+  id            String   @id @default(uuid()) @db.Uuid
+  ticket_id     String   @map("ticket_id") @db.Uuid
+  booking_id    String   @map("booking_id") @db.Uuid
+  vendor_id     String   @map("vendor_id") @db.Uuid
+  staff_user_id String?  @map("staff_user_id") @db.Uuid
+  checked_in_at DateTime @default(now()) @map("checked_in_at")
+
+  ticket  Ticket  @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [booking_id], references: [id], onDelete: Cascade)
+  vendor  Vendor  @relation(fields: [vendor_id], references: [id])
+
+  @@unique([ticket_id])
+  @@index([vendor_id])
+  @@map("checkins")
+}
+
+model Promotion {
+  id              String         @id @default(uuid()) @db.Uuid
+  vendor_id       String?        @map("vendor_id") @db.Uuid
+  code            String         @unique
+  type            PromotionType
+  value           Int
+  minimum_purchase Int?          @map("minimum_purchase")
+  usage_limit     Int?           @map("usage_limit")
+  start_at        DateTime?      @map("start_at")
+  end_at          DateTime?      @map("end_at")
+  status          PromotionStatus @default(ACTIVE)
+
+  vendor       Vendor?          @relation(fields: [vendor_id], references: [id])
+  usages       PromotionUsage[]
+
+  @@index([code])
+  @@map("promotions")
+}
+
+model PromotionUsage {
+  id           String  @id @default(uuid()) @db.Uuid
+  promotion_id String  @map("promotion_id") @db.Uuid
+  booking_id   String  @map("booking_id") @db.Uuid
+  user_id      String? @map("user_id") @db.Uuid
+  amount       Int
+
+  promotion Promotion @relation(fields: [promotion_id], references: [id])
+  booking   Booking   @relation(fields: [booking_id], references: [id])
+
+  @@index([promotion_id])
+  @@map("promotion_usages")
+}
+
+model Review {
+  id          String       @id @default(uuid()) @db.Uuid
+  booking_id  String       @unique @map("booking_id") @db.Uuid
+  user_id     String       @map("user_id") @db.Uuid
+  activity_id String       @map("activity_id") @db.Uuid
+  rating      Int
+  title       String?
+  body        String
+  status      ReviewStatus @default(PUBLISHED)
+  vendor_reply String?     @map("vendor_reply")
+
+  booking  Booking  @relation(fields: [booking_id], references: [id])
+  user     User     @relation(fields: [user_id], references: [id])
+  activity Activity @relation(fields: [activity_id], references: [id])
+
+  @@index([activity_id, status])
+  @@map("reviews")
+}
+
+model Refund {
+  id          String      @id @default(uuid()) @db.Uuid
+  booking_id  String      @map("booking_id") @db.Uuid
+  payment_id  String      @map("payment_id") @db.Uuid
+  type        String
+  amount      Int
+  gross_amount Int?       @map("gross_amount")
+  vendor_liability Int    @default(0) @map("vendor_liability")
+  platform_liability Int  @default(0) @map("platform_liability")
+  provider_reference String? @map("provider_reference")
+  reason      String
+  status      RefundStatus @default(PENDING)
+  approved_by String?     @map("approved_by") @db.Uuid
+  processed_at DateTime?  @map("processed_at")
+
+  booking Booking @relation(fields: [booking_id], references: [id])
+  payment Payment @relation(fields: [payment_id], references: [id])
+
+  @@index([booking_id])
+  @@map("refunds")
+}
+
+model VendorEarning {
+  id               String           @id @default(uuid()) @db.Uuid
+  vendor_id        String           @map("vendor_id") @db.Uuid
+  booking_id       String           @map("booking_id") @db.Uuid
+  gross_amount     Int              @map("gross_amount")
+  commission_amount Int             @map("commission_amount")
+  refund_amount    Int              @default(0) @map("refund_amount")
+  net_amount       Int              @map("net_amount")
+  settlement_status SettlementStatus @default(PENDING) @map("settlement_status")
+
+  vendor  Vendor  @relation(fields: [vendor_id], references: [id])
+  booking Booking @relation(fields: [booking_id], references: [id])
+
+  @@unique([booking_id])
+  @@index([vendor_id])
+  @@map("vendor_earnings")
+}
+
+model Payout {
+  id           String       @id @default(uuid()) @db.Uuid
+  vendor_id    String       @map("vendor_id") @db.Uuid
+  amount       Int
+  status       PayoutStatus @default(PENDING)
+  requested_at DateTime     @default(now()) @map("requested_at")
+  processed_at DateTime?    @map("processed_at")
+  reference    String?
+
+  vendor Vendor @relation(fields: [vendor_id], references: [id])
+
+  @@index([vendor_id])
+  @@map("payouts")
+}
+
+model Notification {
+  id         String             @id @default(uuid()) @db.Uuid
+  user_id    String?            @map("user_id") @db.Uuid
+  booking_id String?            @map("booking_id") @db.Uuid
+  channel    String
+  template   String
+  status     NotificationStatus @default(QUEUED)
+  sent_at    DateTime?          @map("sent_at")
+
+  user    User?    @relation(fields: [user_id], references: [id])
+  booking Booking? @relation(fields: [booking_id], references: [id])
+
+  @@index([user_id])
+  @@map("notifications")
+}
+
+model PlatformSetting {
+  key        String   @id
+  value      String
+  updated_at DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
+}
+
+model CmsPage {
+  id           String    @id @default(uuid()) @db.Uuid
+  slug         String    @unique
+  title        String
+  body         String
+  status       CmsStatus @default(DRAFT)
+  seo_metadata Json?     @map("seo_metadata")
+
+  @@map("cms_pages")
+}
+
+model Banner {
+  id        String  @id @default(uuid()) @db.Uuid
+  title     String
+  image_key String  @map("image_key")
+  target_url String? @map("target_url")
+  active    Boolean @default(true)
+  sort_order Int    @default(0) @map("sort_order")
+
+  @@map("banners")
+}
+
+model AuditLog {
+  id             String      @id @default(uuid()) @db.Uuid
+  actor_user_id  String?     @map("actor_user_id") @db.Uuid
+  action         AuditAction
+  resource_type  String      @map("resource_type")
+  resource_id    String      @map("resource_id")
+  metadata       Json?
+  created_at     DateTime    @default(now()) @map("created_at")
+
+  @@index([resource_type, resource_id])
+  @@map("audit_logs")
+}
+
+model Wishlist {
+  id          String   @id @default(uuid()) @db.Uuid
+  user_id     String   @map("user_id") @db.Uuid
+  activity_id String   @map("activity_id") @db.Uuid
+  created_at  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, activity_id])
+  @@map("wishlists")
+}

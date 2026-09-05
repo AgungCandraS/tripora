@@ -1,0 +1,107 @@
+services:
+  # Infra dev (jalan default — untuk `npm run dev` dari terminal):
+  #   docker compose up -d   (= postgres + redis saja)
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: tripora-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tripora
+      POSTGRES_PASSWORD: tripora
+      POSTGRES_DB: tripora
+    ports:
+      - "5432:5432"
+    volumes:
+      - tripora-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tripora -d tripora"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: tripora-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - tripora-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Full-stack deploy (hanya jalan bila diminta):
+  #   docker compose --profile apps up -d --build
+  api:
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: tripora-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - apps/api/.env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://tripora:tripora@postgres:5432/tripora?schema=public
+      REDIS_HOST: redis
+      QUEUE_REDIS_HOST: redis
+      CORS_ORIGIN: http://localhost:3000
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/api/v1/health').then(async r=>{const j=await r.json().catch(()=>null);process.exit(r.ok&&j?.data?.db!==false?0:1)}).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  worker:
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: tripora-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://tripora:tripora@postgres:5432/tripora?schema=public
+      QUEUE_REDIS_HOST: redis
+      QUEUE_REDIS_PORT: 6379
+      PAYMENT_EXPIRY_MINUTES: 30
+
+  web:
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+        NEXT_PUBLIC_DEMO_PAYMENTS: "true"
+    container_name: tripora-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+volumes:
+  tripora-pgdata:
+  tripora-redisdata:
