@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
@@ -70,6 +70,9 @@ export class AuthService {
     // rotate
     await this.prisma.refreshToken.delete({ where: { id: stored.id } });
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: payload.sub } });
+    if (user.status !== "ACTIVE") {
+      throw new ForbiddenException({ code: "USER_SUSPENDED", message: "Account is suspended" });
+    }
     const tokens = await this.issueTokens(user.id, user.email ?? null);
     return { tokens };
   }

@@ -14,6 +14,7 @@ export class AuthController {
 
   @Public()
   @Post("register")
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
   }
@@ -21,6 +22,7 @@ export class AuthController {
   @Public()
   @Post("login")
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto);
   }

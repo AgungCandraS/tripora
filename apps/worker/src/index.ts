@@ -31,9 +31,11 @@ const emailWorker = new Worker(
   "notifications",
   async (job) => {
     const data = job.data as EmailJob;
+    // Link verifikasi = token sensitif: hanya di-log di non-production.
+    const showLink = process.env.NODE_ENV !== "production" && data.link ? ` link=${data.link}` : "";
     // eslint-disable-next-line no-console
     console.log(
-      `[worker] email job ${job.id} type=${data.type ?? "unknown"} to=${data.to ?? "-"} booking=${data.bookingCode ?? "-"}${data.link ? ` link=${data.link}` : ""}`
+      `[worker] email job ${job.id} type=${data.type ?? "unknown"} to=${data.to ?? "-"} booking=${data.bookingCode ?? "-"}${showLink}`
     );
 
     // MVP: tanpa provider email eksternal, catat pengiriman di DB agar tidak stuck QUEUED.
