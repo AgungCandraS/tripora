@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { ConfigService } from "@nestjs/config";
 import { Throttle } from "@nestjs/throttler";
@@ -41,21 +41,49 @@ export class WebhooksController {
   ) {}
 
   /**
-   * Token webhook milik kita (Mayar tidak memberi token): jika
-   * MAYAR_WEBHOOK_SECRET diisi, request wajib membawa ?key= yang sama persis.
-   * Daftarkan URL lengkap .../webhooks/mayar?key=TOKEN di dashboard Mayar.
+   * Token webhook DARI dashboard Mayar (kolom webhook di menu Integration).
+   * Simpan di MAYAR_WEBHOOK_TOKEN. Karena Mayar tidak mendokumentasikan
+   * letak kirimnya, token diterima dari beberapa lokasi umum (query, header,
+   * atau field body) — salah satu harus cocok persis. Kosong = tanpa cek token.
    */
-  private assertToken(key?: string) {
-    const secret = this.config.get<string>("MAYAR_WEBHOOK_SECRET", "");
-    if (secret && key !== secret) {
+  private assertToken(
+    queryToken?: string,
+    headers?: Record<string, string | string[] | undefined>,
+    body?: unknown
+  ) {
+    const expected = this.config.get<string>("MAYAR_WEBHOOK_TOKEN", "");
+    if (!expected) return;
+    const headerOf = (name: string) => {
+      const v = headers?.[name] ?? headers?.[name.toLowerCase()];
+      const s = Array.isArray(v) ? v[0] : v;
+      return typeof s === "string" ? s.replace(/^Bearer\s+/i, "") : undefined;
+    };
+    const root = (body ?? {}) as Record<string, unknown>;
+    const data = (root.data ?? {}) as Record<string, unknown>;
+    const candidates = [
+      queryToken,
+      root.token,
+      root.webhookToken,
+      root.webhook_token,
+      data.token,
+      headerOf("x-webhook-token"),
+      headerOf("x-mayar-token"),
+      headerOf("authorization"),
+    ].filter((v): v is string => typeof v === "string" && v.length > 0);
+    if (!candidates.includes(expected)) {
       throw new ForbiddenException({ code: "FORBIDDEN", message: "Invalid webhook token" });
     }
   }
 
   @Public()
   @Post("mayar")
-  async mayar(@Body() payload: unknown, @Query("key") key?: string) {
-    this.assertToken(key);
+  async mayar(
+    @Body() payload: unknown,
+    @Query("token") token?: string,
+    @Query("key") key?: string,
+    @Req() req?: { headers?: Record<string, string | string[] | undefined> }
+  ) {
+    this.assertToken(token ?? key, req?.headers, payload);
     return this.payments.handleWebhook(payload);
   }
 }
