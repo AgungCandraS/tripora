@@ -13,9 +13,11 @@ export class RefundsController {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
   @Post()
+  @Roles("VENDOR_OWNER")
   async request(@Body() body: { bookingId: string; reason: string; type?: string }, @CurrentUser() user: AuthUser) {
     const booking = await this.prisma.booking.findUniqueOrThrow({ where: { id: body.bookingId }, include: { payment: true, vendor: true } });
-    if (booking.vendor.owner_user_id !== user.id && !user.vendorId) {
+    // IDOR guard (OWASP A01): vendor hanya boleh refund booking MILIKNYA.
+    if (!user.vendorId || booking.vendor_id !== user.vendorId) {
       throw new BadRequestException({ code: "REFUND_NOT_ALLOWED", message: "Not allowed" });
     }
     if (!["CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(booking.status)) {

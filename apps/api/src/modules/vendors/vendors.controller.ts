@@ -33,7 +33,24 @@ export class VendorProfileController {
   @Patch("profile")
   async update(@CurrentUser() user: AuthUser, @Body() dto: Partial<CreateVendorDto>) {
     const vendor = await this.vendors.getProfile(user.id, user.vendorId);
-    return this.prisma.vendor.update({ where: { id: vendor.id }, data: dto });
+    // Mass-assignment guard (OWASP A01): status/slug/owner/komisi tak bisa diubah via sini.
+    const data: {
+      name?: string;
+      description?: string | null;
+      phone?: string | null;
+      email?: string | null;
+      bank_name?: string | null;
+      bank_account_number?: string | null;
+      bank_account_name?: string | null;
+    } = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.description !== undefined) data.description = dto.description;
+    if (dto.phone !== undefined) data.phone = dto.phone;
+    if (dto.email !== undefined) data.email = dto.email;
+    if (dto.bank_name !== undefined) data.bank_name = dto.bank_name;
+    if (dto.bank_account_number !== undefined) data.bank_account_number = dto.bank_account_number;
+    if (dto.bank_account_name !== undefined) data.bank_account_name = dto.bank_account_name;
+    return this.prisma.vendor.update({ where: { id: vendor.id }, data });
   }
 
   @Post("documents")

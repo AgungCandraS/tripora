@@ -25,6 +25,14 @@ export class VendorCalendarController {
   @Post("schedules")
   async create(@CurrentUser() user: AuthUser, @Body() body: { packageId: string; dayOfWeek?: number; specificDate?: string; startTime: string; endTime: string; capacity: number }) {
     if (!user.vendorId) throw new BadRequestException({ code: "FORBIDDEN", message: "No vendor attached" });
+    // IDOR guard: package harus milik vendor pemanggil (OWASP A01).
+    const pkg = await this.prisma.package.findFirst({
+      where: { id: body.packageId },
+      include: { activity: { select: { vendor_id: true } } },
+    });
+    if (!pkg || pkg.activity.vendor_id !== user.vendorId) {
+      throw new BadRequestException({ code: "NOT_FOUND", message: "Package not found" });
+    }
     return this.prisma.schedule.create({
       data: {
         package_id: body.packageId,

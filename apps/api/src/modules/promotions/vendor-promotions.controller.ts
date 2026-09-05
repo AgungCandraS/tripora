@@ -60,7 +60,19 @@ export class VendorPromotionsController {
     if (!promo || promo.vendor_id !== user.vendorId) {
       throw new BadRequestException({ code: "NOT_FOUND", message: "Promotion not found" });
     }
-    const { code, ...rest } = dto;
-    return this.prisma.promotion.update({ where: { id }, data: rest });
+    // Mass-assignment guard (OWASP A01): code/vendor_id tak bisa diubah via sini.
+    const data: {
+      type?: "PERCENT" | "NOMINAL";
+      value?: number;
+      minimum_purchase?: number | null;
+      usage_limit?: number | null;
+      status?: "ACTIVE" | "INACTIVE";
+    } = {};
+    if (dto.type !== undefined) data.type = dto.type;
+    if (dto.value !== undefined) data.value = dto.value;
+    if (dto.minimum_purchase !== undefined) data.minimum_purchase = dto.minimum_purchase;
+    if (dto.usage_limit !== undefined) data.usage_limit = dto.usage_limit;
+    if (dto.status !== undefined) data.status = dto.status;
+    return this.prisma.promotion.update({ where: { id }, data });
   }
 }

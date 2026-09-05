@@ -15,6 +15,8 @@ class InviteStaffDto {
   role_name!: string;
 }
 
+const STAFF_ROLES = ["VENDOR_STAFF"];
+
 @ApiTags("vendor-staff")
 @ApiBearerAuth()
 @Roles("VENDOR_OWNER")
@@ -35,6 +37,11 @@ export class VendorStaffController {
   @Post()
   async invite(@CurrentUser() user: AuthUser, @Body() dto: InviteStaffDto) {
     if (!user.vendorId) throw new BadRequestException({ code: "FORBIDDEN", message: "No vendor attached" });
+    // Privilege-escalation guard (OWASP A01): invite hanya boleh jadi staff biasa,
+    // bukan VENDOR_OWNER/ADMIN. Owner tetap satu (pendiri vendor).
+    if (!STAFF_ROLES.includes(dto.role_name)) {
+      throw new BadRequestException({ code: "VALIDATION_ERROR", message: "Invalid staff role" });
+    }
     const account = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!account) throw new BadRequestException({ code: "NOT_FOUND", message: "No account with this email; ask them to register first" });
     const member = await this.prisma.vendorMember.upsert({

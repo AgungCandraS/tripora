@@ -41,7 +41,12 @@ export class AdminCmsController {
 
   @Put("pages/:id")
   async updatePage(@Param("id") id: string, @Body() body: Partial<{ title: string; body: string; status: "DRAFT" | "PUBLISHED" }>) {
-    return this.prisma.cmsPage.update({ where: { id }, data: body });
+    // Explicit fields (OWASP A01): slug tak bisa diubah via sini.
+    const data: { title?: string; body?: string; status?: "DRAFT" | "PUBLISHED" } = {};
+    if (typeof body?.title === "string") data.title = body.title;
+    if (typeof body?.body === "string") data.body = body.body;
+    if (body?.status === "DRAFT" || body?.status === "PUBLISHED") data.status = body.status;
+    return this.prisma.cmsPage.update({ where: { id }, data });
   }
 
   @Delete("pages/:id")

@@ -15,19 +15,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = "INTERNAL_ERROR";
+    // Pesan internal (Prisma/SQL/stack) TIDAK BOLEH bocor ke klien (OWASP A05).
     let message = "Internal server error";
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const body = exception.getResponse() as ErrorBody | string;
       if (typeof body === "string") {
-        message = body;
+        message = status >= 500 ? "Internal server error" : body;
       } else {
-        message = body.message ?? exception.message;
-        code = body.code ?? this.codeFromStatus(status);
+        message = status >= 500 ? "Internal server error" : (body.message ?? exception.message);
+        code = status >= 500 ? "INTERNAL_ERROR" : (body.code ?? this.codeFromStatus(status));
       }
     } else if (exception instanceof Error) {
-      message = exception.message;
+      // eslint-disable-next-line no-console
+      console.error("[unhandled]", exception.stack ?? exception.message);
     }
 
     response.status(status).json({

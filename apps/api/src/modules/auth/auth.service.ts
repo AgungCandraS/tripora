@@ -50,7 +50,11 @@ export class AuthService {
     if (!user || !user.password_hash) throw new UnauthorizedException({ code: "UNAUTHORIZED", message: "Invalid credentials" });
 
     const ok = await bcrypt.compare(dto.password, user.password_hash);
-    if (!ok) throw new UnauthorizedException({ code: "UNAUTHORIZED", message: "Invalid credentials" });
+    if (!ok) {
+      // Audit kegagalan login untuk deteksi brute-force (OWASP A09). Tanpa email mentah.
+      await this.audit.log({ action: "LOGIN", resourceType: "User", resourceId: user.id, metadata: { result: "failed" } });
+      throw new UnauthorizedException({ code: "UNAUTHORIZED", message: "Invalid credentials" });
+    }
     if (!user.email_verified) {
       throw new UnauthorizedException({ code: "EMAIL_NOT_VERIFIED", message: "Verifikasi email dulu sebelum masuk." });
     }

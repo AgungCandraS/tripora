@@ -65,7 +65,6 @@ export default function VendorStaffPage() {
        />
         <select value={roleName} onChange={(e) => setRoleName(e.target.value)} className="rounded-[10px] border border-line bg-paper px-3 py-3 text-sm font-bold outline-none focus:border-coral-dark" aria-label="Role">
           <option value="VENDOR_STAFF">Staff lapangan</option>
-          <option value="VENDOR_OWNER">Owner</option>
         </select>
         <button type="submit" className="inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-ink px-4 py-3 text-sm font-bold text-paper">
           <UserPlus size={16} /> Undang

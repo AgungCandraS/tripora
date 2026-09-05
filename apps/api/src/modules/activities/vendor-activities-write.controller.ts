@@ -78,11 +78,23 @@ export class VendorActivitiesWriteController {
     const existing = await this.prisma.activity.findFirst({ where: { id, vendor_id: user.vendorId } });
     if (!existing) throw new BadRequestException({ code: "NOT_FOUND", message: "Activity not found" });
     if (existing.status === "PUBLISHED") throw new BadRequestException({ code: "INVALID_STATE_TRANSITION", message: "Published activities are read-only; unpublish first" });
-    const { categoryIds: _ignored, destinationId, ...rest } = dto;
-    return this.prisma.activity.update({
-      where: { id },
-      data: { ...rest, destination_id: destinationId },
-    });
+    // Mass-assignment guard (OWASP A01): hanya field yang boleh diubah vendor.
+    // Partial<DTO> menonaktifkan whitelist validator, jadi white-list eksplisit di sini.
+    const data: {
+      title?: string;
+      destination_id?: string;
+      short_description?: string | null;
+      description?: string | null;
+      meeting_point?: string | null;
+      min_age?: number | null;
+    } = {};
+    if (dto.title !== undefined) data.title = dto.title;
+    if (dto.destinationId !== undefined) data.destination_id = dto.destinationId;
+    if (dto.short_description !== undefined) data.short_description = dto.short_description;
+    if (dto.description !== undefined) data.description = dto.description;
+    if (dto.meeting_point !== undefined) data.meeting_point = dto.meeting_point;
+    if (dto.min_age !== undefined) data.min_age = dto.min_age;
+    return this.prisma.activity.update({ where: { id }, data });
   }
 
   @Post(":id/submit")

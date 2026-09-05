@@ -76,7 +76,21 @@ export class VendorPackagesController {
     if (!pkg || pkg.activity.vendor_id !== user.vendorId) {
       throw new BadRequestException({ code: "NOT_FOUND", message: "Package not found" });
     }
-    const { activityId: _ignored, ...rest } = dto;
-    return this.prisma.package.update({ where: { id }, data: rest });
+    // Mass-assignment guard (OWASP A01): activity_id/status tak bisa diubah via sini.
+    const data: {
+      name?: string;
+      description?: string | null;
+      base_price?: number;
+      duration_minutes?: number | null;
+      min_participants?: number;
+      max_participants?: number;
+    } = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.description !== undefined) data.description = dto.description;
+    if (dto.base_price !== undefined) data.base_price = dto.base_price;
+    if (dto.duration_minutes !== undefined) data.duration_minutes = dto.duration_minutes;
+    if (dto.min_participants !== undefined) data.min_participants = dto.min_participants;
+    if (dto.max_participants !== undefined) data.max_participants = dto.max_participants;
+    return this.prisma.package.update({ where: { id }, data });
   }
 }
