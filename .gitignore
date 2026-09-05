@@ -4,6 +4,7 @@ dist/
 .turbo/
 out/
 *.tsbuildinfo
+*.log
 .env
 !.env.example
 docs/
