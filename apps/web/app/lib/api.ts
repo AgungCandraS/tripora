@@ -11,37 +11,14 @@ export class ApiError extends Error {
   }
 }
 
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem("tripora_token");
-}
-
-export function setToken(token: string | null) {
-  if (typeof window === "undefined") return;
-  if (token) window.localStorage.setItem("tripora_token", token);
-  else window.localStorage.removeItem("tripora_token");
-}
-
-/** Stable guest session id binding reservation holds to this browser (PRD §37). */
-export function getSessionId(): string {
-  if (typeof window === "undefined") return "";
-  let sid = window.localStorage.getItem("tripora_session");
-  if (!sid) {
-    sid = typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    window.localStorage.setItem("tripora_session", sid);
-  }
-  return sid;
-}
-
-async function request<T>(path: string, init?: RequestInit, token?: string | null): Promise<T> {
+async function raw<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}/api/v1${path}`, {
     ...init,
+    // Sesi httpOnly cookie (OWASP A07): browser mengirim otomatis, JS tak bisa baca.
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
+      ...((init?.headers ?? {}) as Record<string, string>),
     },
     cache: "no-store",
   });
@@ -58,19 +35,57 @@ async function request<T>(path: string, init?: RequestInit, token?: string | nul
   return (json.data ?? null) as T;
 }
 
+// Single-flight silent refresh: 401 → perbarui sesi sekali → ulangi request.
+let refreshPromise: Promise<unknown> | null = null;
+
+async function request<T>(path: string, init?: RequestInit, _token?: string | null): Promise<T> {
+  void _token; // legacy param, diabaikan: auth via cookie
+  try {
+    return await raw<T>(path, init);
+  } catch (e) {
+    const isAuthPath = path.startsWith("/auth/login") || path.startsWith("/auth/refresh");
+    if (!(e instanceof ApiError) || e.status !== 401 || isAuthPath || typeof window === "undefined") throw e;
+    if (!refreshPromise) {
+      refreshPromise = raw("/auth/refresh", { method: "POST", body: "{}" }).finally(() => {
+        refreshPromise = null;
+      });
+    }
+    try {
+      await refreshPromise;
+    } catch {
+      throw e; // refresh gagal → sesi benar-benar habis
+    }
+    return raw<T>(path, init);
+  }
+}
+
 export const api = {
-  get: <T>(path: string, token?: string | null) => request<T>(path, { method: "GET" }, token ?? getToken()),
+  get: <T>(path: string, token?: string | null) => request<T>(path, { method: "GET" }, token),
   post: <T>(path: string, body?: unknown, token?: string | null) =>
-    request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) }, token ?? getToken()),
+    request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) }, token),
   patch: <T>(path: string, body?: unknown, token?: string | null) =>
-    request<T>(path, { method: "PATCH", body: JSON.stringify(body) }, token ?? getToken()),
+    request<T>(path, { method: "PATCH", body: JSON.stringify(body) }, token),
   put: <T>(path: string, body?: unknown, token?: string | null) =>
-    request<T>(path, { method: "PUT", body: JSON.stringify(body) }, token ?? getToken()),
-  del: <T>(path: string, token?: string | null) => request<T>(path, { method: "DELETE" }, token ?? getToken()),
+    request<T>(path, { method: "PUT", body: JSON.stringify(body) }, token),
+  del: <T>(path: string, token?: string | null) => request<T>(path, { method: "DELETE" }, token),
 };
 
 export function formatIDR(n: number) {
   return `Rp${new Intl.NumberFormat("id-ID").format(n)}`;
+}
+
+/** Stable guest session id binding reservation holds to this browser (PRD §37). */
+export function getSessionId(): string {
+  if (typeof window === "undefined") return "";
+  let sid = window.localStorage.getItem("tripora_session");
+  if (!sid) {
+    sid =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    window.localStorage.setItem("tripora_session", sid);
+  }
+  return sid;
 }
 
 /** Server-side fetch helper (Server Components): no token, public endpoints only. */

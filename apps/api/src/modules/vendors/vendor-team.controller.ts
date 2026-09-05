@@ -1,11 +1,12 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
-import { IsEmail, IsOptional, IsString } from "class-validator";
+import { IsArray, IsEmail, IsIn, IsOptional, IsString } from "class-validator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/auth.decorators";
 import { AuthUser } from "../../common/interfaces/auth-user.interface";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { DEFAULT_STAFF_PERMISSIONS, STAFF_PERMISSIONS } from "../../common/decorators/permission.decorators";
 
 class InviteStaffDto {
   @IsEmail()
@@ -13,6 +14,11 @@ class InviteStaffDto {
 
   @IsString()
   role_name!: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  permissions?: string[];
 }
 
 const STAFF_ROLES = ["VENDOR_STAFF"];
@@ -44,10 +50,15 @@ export class VendorStaffController {
     }
     const account = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!account) throw new BadRequestException({ code: "NOT_FOUND", message: "No account with this email; ask them to register first" });
+    // revenue.read boleh diberikan eksplisit owner; default tidak (PRD §9).
+    const permissions = dto.permissions?.length
+      ? dto.permissions.filter((p): p is (typeof STAFF_PERMISSIONS)[number] =>
+          (STAFF_PERMISSIONS as readonly string[]).includes(p))
+      : [...DEFAULT_STAFF_PERMISSIONS];
     const member = await this.prisma.vendorMember.upsert({
       where: { vendor_id_user_id: { vendor_id: user.vendorId, user_id: account.id } },
-      update: { role_name: dto.role_name, status: "ACTIVE" },
-      create: { vendor_id: user.vendorId, user_id: account.id, role_name: dto.role_name, status: "ACTIVE" },
+      update: { role_name: dto.role_name, status: "ACTIVE", permissions },
+      create: { vendor_id: user.vendorId, user_id: account.id, role_name: dto.role_name, status: "ACTIVE", permissions },
     });
     // Grant workspace role so staff can open /staff after re-login (JWT embeds roles).
     const staffRole = await this.prisma.role.findUnique({ where: { code: "VENDOR_STAFF" } });
@@ -63,14 +74,20 @@ export class VendorStaffController {
   }
 
   @Patch(":id")
-  async update(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body() dto: { role_name?: string; status?: "ACTIVE" | "SUSPENDED" }) {
+  async update(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body() dto: { role_name?: string; status?: "ACTIVE" | "SUSPENDED"; permissions?: string[] }) {
     const member = await this.prisma.vendorMember.findUnique({ where: { id } });
     if (!member || member.vendor_id !== user.vendorId) {
       throw new BadRequestException({ code: "NOT_FOUND", message: "Staff not found" });
     }
+    if (dto.role_name !== undefined && !STAFF_ROLES.includes(dto.role_name)) {
+      throw new BadRequestException({ code: "VALIDATION_ERROR", message: "Invalid staff role" });
+    }
+    const permissions = dto.permissions
+      ? dto.permissions.filter((p) => (STAFF_PERMISSIONS as readonly string[]).includes(p))
+      : undefined;
     return this.prisma.vendorMember.update({
       where: { id },
-      data: { role_name: dto.role_name, status: dto.status },
+      data: { role_name: dto.role_name, status: dto.status, ...(permissions ? { permissions } : {}) },
     });
   }
 }

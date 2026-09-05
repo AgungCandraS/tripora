@@ -286,6 +286,7 @@ model VendorMember {
   user_id   String       @map("user_id") @db.Uuid
   role_name String       @map("role_name")
   status    MemberStatus @default(ACTIVE)
+  permissions String[]   @default([])
 
   vendor Vendor @relation(fields: [vendor_id], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)

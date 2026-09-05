@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { IsInt, IsOptional, IsString, Min, MinLength } from "class-validator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/auth.decorators";
+import { Permissions } from "../../common/decorators/permission.decorators";
 import { AuthUser } from "../../common/interfaces/auth-user.interface";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -37,6 +38,8 @@ export class VendorPromotionsController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get()
+  @Roles("VENDOR_OWNER", "VENDOR_STAFF", "ADMIN")
+  @Permissions("promotion.read")
   async list(@CurrentUser() user: AuthUser) {
     if (!user.vendorId) return { promotions: [] };
     const promotions = await this.prisma.promotion.findMany({

@@ -2,6 +2,9 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { Redis } from "ioredis";
+import { REDIS_CLIENT } from "./redis/redis.constants";
+import { RedisThrottlerStorage } from "./common/services/throttle-redis.storage";
 import { AuthGuard } from "./common/services/auth.guard";
 import { AuthModule } from "./modules/auth/auth.module";
 import { UsersModule } from "./modules/users/users.module";
@@ -40,11 +43,15 @@ import { HealthModule } from "./health/health.module";
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     // Anti-fake-booking rate limits (PRD §32). Defaults generous for dev; tighten via env.
+    // Storage Redis agar limit lintas replika (OWASP A07).
     ThrottlerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => [
-        { name: "default", ttl: 60_000, limit: config.get<number>("THROTTLE_DEFAULT_LIMIT", 120) },
-      ],
+      inject: [ConfigService, REDIS_CLIENT],
+      useFactory: (config: ConfigService, redis: Redis) => ({
+        throttlers: [
+          { name: "default", ttl: 60_000, limit: config.get<number>("THROTTLE_DEFAULT_LIMIT", 120) },
+        ],
+        storage: new RedisThrottlerStorage(redis),
+      }),
     }),
     PrismaModule,
     RedisModule,

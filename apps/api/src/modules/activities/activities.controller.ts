@@ -2,6 +2,8 @@ import { BadRequestException, Controller, Get, Param, Query } from "@nestjs/comm
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { NotFoundException } from "@nestjs/common";
 import { Public } from "../../common/decorators/auth.decorators";
+import { Roles } from "../../common/decorators/auth.decorators";
+import { Permissions } from "../../common/decorators/permission.decorators";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { AuthUser } from "../../common/interfaces/auth-user.interface";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -44,6 +46,8 @@ export class VendorActivitiesController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get()
+  @Roles("VENDOR_OWNER", "VENDOR_STAFF", "ADMIN")
+  @Permissions("activity.read")
   async listMine(@CurrentUser() user: AuthUser) {
     if (!user.vendorId) throw new BadRequestException({ code: "FORBIDDEN", message: "No vendor attached" });
     return this.prisma.activity.findMany({

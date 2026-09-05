@@ -162,7 +162,10 @@ async function main() {
   const palayangan = await prisma.vendor.findUniqueOrThrow({ where: { slug: "palayangan-river-club" } });
   await prisma.vendorMember.upsert({
     where: { vendor_id_user_id: { vendor_id: palayangan.id, user_id: staff.id } }, update: {},
-    create: { vendor_id: palayangan.id, user_id: staff.id, role_name: "VENDOR_STAFF", status: "ACTIVE" },
+    create: {
+      vendor_id: palayangan.id, user_id: staff.id, role_name: "VENDOR_STAFF", status: "ACTIVE",
+      permissions: ["booking.read", "calendar.read", "checkin.scan", "participant.read", "activity.read", "promotion.read", "review.read"],
+    },
   });
 
   for (const a of ACTIVITIES) {

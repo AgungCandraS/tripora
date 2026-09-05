@@ -1,6 +1,8 @@
 import { BadRequestException, Controller, Get, Param, Post, Query, Body } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { Roles } from "../../common/decorators/auth.decorators";
+import { Permissions } from "../../common/decorators/permission.decorators";
 import { AuthUser } from "../../common/interfaces/auth-user.interface";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -11,6 +13,8 @@ export class VendorCalendarController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get()
+  @Roles("VENDOR_OWNER", "VENDOR_STAFF", "ADMIN")
+  @Permissions("calendar.read")
   async calendar(@CurrentUser() user: AuthUser, @Query("from") from?: string, @Query("to") to?: string) {
     if (!user.vendorId) throw new BadRequestException({ code: "FORBIDDEN", message: "No vendor attached" });
     const activities = await this.prisma.activity.findMany({ where: { vendor_id: user.vendorId }, select: { id: true } });
@@ -23,6 +27,7 @@ export class VendorCalendarController {
   }
 
   @Post("schedules")
+  @Roles("VENDOR_OWNER")
   async create(@CurrentUser() user: AuthUser, @Body() body: { packageId: string; dayOfWeek?: number; specificDate?: string; startTime: string; endTime: string; capacity: number }) {
     if (!user.vendorId) throw new BadRequestException({ code: "FORBIDDEN", message: "No vendor attached" });
     // IDOR guard: package harus milik vendor pemanggil (OWASP A01).

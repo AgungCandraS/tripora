@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { IsInt, IsOptional, IsString, Min, MinLength } from "class-validator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/auth.decorators";
+import { Permissions } from "../../common/decorators/permission.decorators";
 import { AuthUser } from "../../common/interfaces/auth-user.interface";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -53,6 +54,8 @@ export class VendorPackagesController {
   }
 
   @Get()
+  @Roles("VENDOR_OWNER", "VENDOR_STAFF", "ADMIN")
+  @Permissions("activity.read")
   async list(@CurrentUser() user: AuthUser) {
     if (!user.vendorId) return { packages: [] };
     const packages = await this.prisma.package.findMany({

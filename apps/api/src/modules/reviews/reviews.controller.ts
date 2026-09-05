@@ -2,6 +2,7 @@ import { BadRequestException, Controller, Get, Param, Patch, Post, Body, Query }
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { Public } from "../../common/decorators/auth.decorators";
 import { Roles } from "../../common/decorators/auth.decorators";
+import { Permissions } from "../../common/decorators/permission.decorators";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { AuthUser } from "../../common/interfaces/auth-user.interface";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -74,6 +75,7 @@ export class VendorReviewsController {
 
   @Get()
   @Roles("VENDOR_OWNER", "VENDOR_STAFF", "ADMIN")
+  @Permissions("review.read")
   async list(@CurrentUser() user: AuthUser) {
     if (!user.vendorId) return { reviews: [] };
     const rows = await this.prisma.review.findMany({

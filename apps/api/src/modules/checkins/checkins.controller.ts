@@ -2,6 +2,7 @@ import { BadRequestException, Controller, Post, Body, Get, Query } from "@nestjs
 import { ForbiddenException } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../../common/decorators/auth.decorators";
+import { Permissions } from "../../common/decorators/permission.decorators";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { AuthUser } from "../../common/interfaces/auth-user.interface";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -20,6 +21,7 @@ export class CheckinsController {
   ) {}
 
   @Post("scan")
+  @Permissions("checkin.scan")
   async scan(@Body() body: { token: string }, @CurrentUser() user: AuthUser) {
     // 1. Verify signature + ticket status
     const ticket = await this.tickets.validate(body.token);
@@ -55,6 +57,7 @@ export class CheckinsController {
   }
 
   @Get()
+  @Permissions("booking.read")
   async listForVendor(@CurrentUser() user: AuthUser, @Query("limit") limit?: string) {
     const bookings = await this.prisma.booking.findMany({
       where: { vendor_id: user.vendorId ?? undefined },

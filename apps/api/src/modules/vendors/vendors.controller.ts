@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/auth.decorators";
+import { Permissions } from "../../common/decorators/permission.decorators";
 import { AuthUser } from "../../common/interfaces/auth-user.interface";
 import { PrismaService } from "../../prisma/prisma.service";
 import { VendorsService } from "./vendors.service";
@@ -26,11 +27,13 @@ export class VendorProfileController {
   constructor(private readonly vendors: VendorsService, private readonly prisma: PrismaService) {}
 
   @Get("profile")
+  @Roles("VENDOR_OWNER", "ADMIN")
   async profile(@CurrentUser() user: AuthUser) {
     return this.vendors.getProfile(user.id, user.vendorId);
   }
 
   @Patch("profile")
+  @Roles("VENDOR_OWNER")
   async update(@CurrentUser() user: AuthUser, @Body() dto: Partial<CreateVendorDto>) {
     const vendor = await this.vendors.getProfile(user.id, user.vendorId);
     // Mass-assignment guard (OWASP A01): status/slug/owner/komisi tak bisa diubah via sini.
@@ -54,12 +57,15 @@ export class VendorProfileController {
   }
 
   @Post("documents")
+  @Roles("VENDOR_OWNER")
   async addDocument(@CurrentUser() user: AuthUser, @Body() dto: VendorDocumentDto) {
     if (!user.vendorId) throw new Error("No vendor attached");
     return this.vendors.addDocument(user.id, user.vendorId, dto);
   }
 
   @Get("bookings")
+  @Roles("VENDOR_OWNER", "VENDOR_STAFF", "ADMIN")
+  @Permissions("booking.read")
   async bookings(@CurrentUser() user: AuthUser) {
     if (!user.vendorId) return { bookings: [] };
     const bookings = await this.prisma.booking.findMany({
@@ -71,6 +77,8 @@ export class VendorProfileController {
   }
 
   @Get("revenue")
+  @Roles("VENDOR_OWNER", "ADMIN")
+  @Permissions("revenue.read")
   async revenue(@CurrentUser() user: AuthUser) {
     if (!user.vendorId) return { gross: 0, commission: 0, net: 0, bookings: 0 };
     const agg = await this.prisma.vendorEarning.aggregate({ where: { vendor_id: user.vendorId }, _sum: { gross_amount: true, commission_amount: true, net_amount: true }, _count: true });
