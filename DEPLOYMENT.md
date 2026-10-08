@@ -1,8 +1,12 @@
 # Deployment
 
-The repository includes deployment configurations; no public deployment has been created yet. Cloudflare Workers, Render and Neon authentication now work. The connected Neon organization is managed by Vercel and rejects new projects through the Neon API. Render rejects creation of a Free Key Value instance with HTTP 402 and asks for payment information. No paid resource or production database was created.
+The frontend is live at [tripora-web.candrasaputraagung.workers.dev](https://tripora-web.candrasaputraagung.workers.dev), Worker version `02b90739-0828-4f8e-956c-d99c24e98b6a`. Public HTTP checks passed for 15 pages, catalog search/filtering/pagination, saved-place lookups, and the real Situ Cileunca hero image. Backend routes currently return the configured `API_UNAVAILABLE` response with HTTP 503.
 
-Remaining account setup: create a directly managed Neon Free organization, and resolve Render's account verification requirement or create its Free resources through the Dashboard if the account permits this without a card. The runtime values can then be configured and the services published.
+Cloudflare Workers, Render and Neon authentication work. The Vercel-managed Neon Free organization rejects new projects, but permits a separate schema-only branch. Database `tripora` and role `tripora_owner` were created on branch `br-blue-meadow-awrhnry7` of project `royal-sunset-23278382`. PostGIS 3.5 is enabled, all nine migrations were applied, and the database has five reference roles and zero users. The original branch was not migrated. Credentials remain in ignored local deployment state.
+
+Render rejects both Free Key Value and Free web service creation with HTTP 402, explicitly requesting payment information at `https://dashboard.render.com/billing`. No backend service or paid resource was created. The remaining step is resolving this account requirement or selecting another backend host, then publishing the API and configuring frontend `API_URL`.
+
+The Neon branch shares the existing project's Free quota. Vercel-managed accounts forbid changing its suspend interval; this endpoint inherited `suspend_timeout_seconds: 0` and uses fixed 0.25 CU. Its compute is suspended while waiting for backend hosting to avoid idle quota consumption. Prefer a directly managed Neon Free organization with normal automatic suspension for ongoing hosting.
 
 ## Frontend: Cloudflare Workers Free
 
@@ -61,7 +65,7 @@ Set the payment webhook to `https://YOUR-BACKEND.onrender.com/api/v1/webhooks/ma
 
 Local checks passed for the OpenNext build, Worker dry run and upload size, Render Blueprint JSON Schema, backend container startup against an isolated PostGIS test database, and HTTP flows through the same-origin proxy. Existing booking/payment/ownership tests and the backend supervisor checks also run in CI.
 
-Actual publishing requires a directly managed Neon Free organization, Render resources on the Free plan, and confirmation that the Cloudflare account is on Workers Free. After publishing, check frontend routes, login/refresh/logout cookies, backend health, webhook validation, email delivery, Worker CPU usage, and service restarts. Local startup and bundle checks are not a live deployment test.
+Frontend publishing and public route checks are complete. Backend publishing still requires Render account verification or another compatible host. After the backend is published, check login/refresh/logout cookies, backend health, webhook validation, email delivery, Worker CPU usage, and service restarts. Local backend startup checks are not a live backend deployment test.
 
 Free service plans are not a guarantee of zero charges if a payment method is added and included quotas are exceeded. [Render's FAQ](https://render.com/docs/faq) documents supplementary charges for outbound bandwidth and build pipeline minutes. No payment method, paid plan or paid add-on is configured by this repository.
 
