@@ -1,6 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "tripora-web",
+  "account_id": "bcbef1258087626bc4dbd63d9972a53a",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-10-08",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
