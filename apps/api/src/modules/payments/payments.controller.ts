@@ -1,8 +1,19 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { ConfigService } from "@nestjs/config";
 import { Throttle } from "@nestjs/throttler";
-import { Public } from "../../common/decorators/auth.decorators";
+import { OptionalAuth, Public } from "../../common/decorators/auth.decorators";
+import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { AuthUser } from "../../common/interfaces/auth-user.interface";
 import { PaymentsService } from "./payments.service";
 
 @ApiTags("payments")
@@ -11,23 +22,33 @@ export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
   @Post()
+  @OptionalAuth()
   @ApiBearerAuth()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  async create(@Body() body: { bookingCode: string }) {
-    return this.payments.create(body.bookingCode);
+  async create(
+    @Body() body: { bookingCode: string; guestAccessToken?: string },
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.payments.create(
+      body.bookingCode,
+      user?.id,
+      body.guestAccessToken,
+    );
   }
 
   @Public()
   @Post("simulate")
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  async simulate(@Body() body: { bookingCode: string }) {
-    return this.payments.simulate(body.bookingCode);
+  async simulate(
+    @Body() body: { bookingCode: string; guestAccessToken?: string },
+  ) {
+    return this.payments.simulate(body.bookingCode, body.guestAccessToken);
   }
 
   @Get(":id")
   @ApiBearerAuth()
-  async get(@Param("id") id: string) {
-    const row = await this.payments.find(id);
+  async get(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+    const row = await this.payments.find(id, user);
     return row;
   }
 }
@@ -37,7 +58,7 @@ export class PaymentsController {
 export class WebhooksController {
   constructor(
     private readonly payments: PaymentsService,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -49,7 +70,7 @@ export class WebhooksController {
   private assertToken(
     queryToken?: string,
     headers?: Record<string, string | string[] | undefined>,
-    body?: unknown
+    body?: unknown,
   ) {
     const expected = this.config.get<string>("MAYAR_WEBHOOK_TOKEN", "");
     if (!expected) return;
@@ -71,7 +92,10 @@ export class WebhooksController {
       headerOf("authorization"),
     ].filter((v): v is string => typeof v === "string" && v.length > 0);
     if (!candidates.includes(expected)) {
-      throw new ForbiddenException({ code: "FORBIDDEN", message: "Invalid webhook token" });
+      throw new ForbiddenException({
+        code: "FORBIDDEN",
+        message: "Invalid webhook token",
+      });
     }
   }
 
@@ -81,7 +105,7 @@ export class WebhooksController {
     @Body() payload: unknown,
     @Query("token") token?: string,
     @Query("key") key?: string,
-    @Req() req?: { headers?: Record<string, string | string[] | undefined> }
+    @Req() req?: { headers?: Record<string, string | string[] | undefined> },
   ) {
     this.assertToken(token ?? key, req?.headers, payload);
     return this.payments.handleWebhook(payload);

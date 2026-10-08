@@ -1,8 +1,21 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { RoleCodeType } from "@tripora/types";
-import { IS_PUBLIC_KEY, ROLES_KEY } from "../decorators/auth.decorators";
-import { PERMISSIONS_KEY, hasPermissions } from "../decorators/permission.decorators";
+import {
+  IS_PUBLIC_KEY,
+  OPTIONAL_AUTH_KEY,
+  ROLES_KEY,
+} from "../decorators/auth.decorators";
+import {
+  PERMISSIONS_KEY,
+  hasPermissions,
+} from "../decorators/permission.decorators";
 import { AuthRequest } from "../interfaces/auth-user.interface";
 import { PrismaService } from "../../prisma/prisma.service";
 import { TokenService } from "../services/token.service";
@@ -12,12 +25,19 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly tokenService: TokenService,
     private readonly reflector: Reflector,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [ctx.getHandler(), ctx.getClass()]);
-    if (isPublic) return true;
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
+    const optional = this.reflector.getAllAndOverride<boolean>(
+      OPTIONAL_AUTH_KEY,
+      [ctx.getHandler(), ctx.getClass()],
+    );
+    if (isPublic && !optional) return true;
 
     const request = ctx.switchToHttp().getRequest<AuthRequest>();
     // Token dari httpOnly cookie (web) atau header Bearer (kompat: Swagger, API client).
@@ -28,39 +48,75 @@ export class AuthGuard implements CanActivate {
         ? header.slice(7).trim()
         : (request.cookies?.accessToken as string | undefined);
     if (!token) {
-      throw new UnauthorizedException({ code: "UNAUTHORIZED", message: "Missing credentials" });
+      if (optional) return true;
+      throw new UnauthorizedException({
+        code: "UNAUTHORIZED",
+        message: "Missing credentials",
+      });
     }
     const payload = this.tokenService.verifyAccess(token);
 
     // JWT claims tidak cukup: status akun dicek ke DB agar suspend admin
     // langsung berlaku (token lama max 15 menit, refresh diblokir di service).
-    const account = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { status: true } });
+    const account = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { status: true },
+    });
     if (!account || account.status !== "ACTIVE") {
-      throw new ForbiddenException({ code: "USER_SUSPENDED", message: "Account is suspended" });
+      throw new ForbiddenException({
+        code: "USER_SUSPENDED",
+        message: "Account is suspended",
+      });
     }
 
-    const roles = this.reflector.getAllAndOverride<RoleCodeType[]>(ROLES_KEY, [ctx.getHandler(), ctx.getClass()]);
+    const roles = this.reflector.getAllAndOverride<RoleCodeType[]>(ROLES_KEY, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
     if (roles && roles.length > 0) {
-      const allowed = payload.roles.some((r) => roles.includes(r as RoleCodeType));
+      const allowed = payload.roles.some((r) =>
+        roles.includes(r as RoleCodeType),
+      );
       if (!allowed) {
-        throw new ForbiddenException({ code: "FORBIDDEN", message: "Insufficient role" });
+        throw new ForbiddenException({
+          code: "FORBIDDEN",
+          message: "Insufficient role",
+        });
       }
     }
 
     // Granular staff permissions (PRD §9). Owner & admin lolos penuh.
-    const required = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [ctx.getHandler(), ctx.getClass()]);
+    const required = this.reflector.getAllAndOverride<string[]>(
+      PERMISSIONS_KEY,
+      [ctx.getHandler(), ctx.getClass()],
+    );
     if (required && required.length > 0) {
       const isOwner = payload.roles.includes("VENDOR_OWNER");
       const isAdmin = payload.roles.includes("ADMIN");
       if (!isOwner && !isAdmin) {
         if (!payload.vendorId) {
-          throw new ForbiddenException({ code: "FORBIDDEN", message: "Missing permission" });
+          throw new ForbiddenException({
+            code: "FORBIDDEN",
+            message: "Missing permission",
+          });
         }
         const member = await this.prisma.vendorMember.findUnique({
-          where: { vendor_id_user_id: { vendor_id: payload.vendorId, user_id: payload.sub } },
+          where: {
+            vendor_id_user_id: {
+              vendor_id: payload.vendorId,
+              user_id: payload.sub,
+            },
+          },
         });
-        if (!member || member.status !== "ACTIVE" || !hasPermissions(member.permissions, required)) {
-          throw new ForbiddenException({ code: "FORBIDDEN", message: "Missing permission" });
+        if (
+          !member ||
+          member.status !== "ACTIVE" ||
+          !hasPermissions(member.permissions, required)
+        ) {
+          throw new ForbiddenException({
+            code: "FORBIDDEN",
+            message: "Missing permission",
+          });
         }
       }
     }

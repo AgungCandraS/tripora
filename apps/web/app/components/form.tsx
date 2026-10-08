@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 export const inputClass =
-  "mt-2 w-full rounded-[10px] border border-line bg-transparent px-3.5 py-3 text-sm outline-none placeholder:text-ink/35 placeholder:font-normal focus:border-coral-dark";
+  "mt-2 min-h-12 w-full rounded-[10px] border border-line bg-white px-3.5 py-3 text-base outline-none placeholder:text-ink/45 placeholder:font-normal focus:border-moss focus:ring-2 focus:ring-moss/15";
 
 export function Field({
   label,
@@ -18,7 +18,9 @@ export function Field({
     <label className={`block ${span ? "sm:col-span-2" : ""}`}>
       <span className="text-sm font-semibold">
         {label}{" "}
-        {hint ? <span className="font-normal text-ink/45">({hint})</span> : null}
+        {hint ? (
+          <span className="font-normal text-ink/45">({hint})</span>
+        ) : null}
       </span>
       {children}
     </label>

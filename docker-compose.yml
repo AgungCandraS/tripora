@@ -85,6 +85,8 @@ services:
       QUEUE_REDIS_HOST: redis
       QUEUE_REDIS_PORT: 6379
       PAYMENT_EXPIRY_MINUTES: 30
+      EMAIL_DELIVERY_URL: ${EMAIL_DELIVERY_URL:-}
+      EMAIL_DELIVERY_TOKEN: ${EMAIL_DELIVERY_TOKEN:-}
 
   web:
     profiles: ["apps"]

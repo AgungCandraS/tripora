@@ -4,23 +4,50 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   verify:
     name: typecheck · lint · test · build
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://tripora:tripora@localhost:5432/tripora_test?schema=public
+      TEST_DATABASE_URL: postgresql://tripora:tripora@localhost:5432/tripora_test?schema=public
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: tripora
+          POSTGRES_PASSWORD: tripora
+          POSTGRES_DB: tripora_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tripora -d tripora_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:deploy -w @tripora/api
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm run test -w @tripora/api
+      - run: npm run test -w @tripora/api -- --runInBand
+      - run: npm run test -w @tripora/worker
+      - run: python scripts/test-bandung-import.py
+      - run: npm run build -w @tripora/worker
+      - run: node scripts/verify-reconciliation.cjs
       - run: npm run build -w @tripora/api
       - run: npm run build -w @tripora/web
         env:

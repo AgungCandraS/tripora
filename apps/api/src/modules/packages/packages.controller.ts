@@ -12,8 +12,19 @@ export class PackagesController {
 
   @Get(":id")
   async get(@Param("id") id: string) {
-    const pkg = await this.prisma.package.findUnique({ where: { id }, include: { activity: true, schedules: true } });
-    if (!pkg) throw new NotFoundException({ code: "NOT_FOUND", message: "Package not found" });
+    const pkg = await this.prisma.package.findUnique({
+      where: {
+        id,
+        status: "ACTIVE",
+        activity: { status: "PUBLISHED", vendor: { status: "APPROVED" } },
+      },
+      include: { activity: true, schedules: { where: { status: "ACTIVE" } } },
+    });
+    if (!pkg)
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "Package not found",
+      });
     return pkg;
   }
 }

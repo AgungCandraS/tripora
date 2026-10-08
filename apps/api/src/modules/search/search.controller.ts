@@ -1,109 +1,146 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Query } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { Prisma } from "@prisma/client";
 import { Public } from "../../common/decorators/auth.decorators";
+import { parseBookingDate } from "../../common/utils/slot-time";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AvailabilityService } from "../availability/availability.service";
 
-interface SearchRow {
-  id: string;
-  title: string;
-  slug: string;
-  short_description: string | null;
-  destination_id: string;
-  rating_average: unknown;
-  rating_count: number;
-  rank: number;
-  distance_m: number | null;
+function numeric(
+  value: string | undefined,
+  name: string,
+  min: number,
+  max: number,
+  integer = false,
+) {
+  if (value === undefined || value === "") return undefined;
+  const result = Number(value);
+  if (
+    !Number.isFinite(result) ||
+    result < min ||
+    result > max ||
+    (integer && !Number.isInteger(result))
+  )
+    throw new BadRequestException({
+      code: "VALIDATION_ERROR",
+      message: `Invalid ${name}`,
+    });
+  return result;
 }
 
 @ApiTags("search")
 @Public()
 @Controller("search")
 export class SearchController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly availability: AvailabilityService,
+  ) {}
 
-  /**
-   * V1 search: PostgreSQL Full Text Search (tsvector rank over title/description)
-   * + PostGIS radius (ST_DWithin on geom) + prisma filters for the rest.
-   * Raw SQL is used for FTS/PostGIS per DATABASE.md; Prisma for the rest.
-   */
   @Get()
-  async search(
-    @Query("q") q?: string,
-    @Query("destination") destination?: string,
-    @Query("category") category?: string,
-    @Query("min_price") minPrice?: string,
-    @Query("max_price") maxPrice?: string,
-    @Query("lat") lat?: string,
-    @Query("lng") lng?: string,
-    @Query("radius") radiusKm?: string,
-    @Query("page") page?: string
-  ) {
-    const take = 12;
-    const pageNum = Math.max(1, Number(page) || 1);
-    const skip = (pageNum - 1) * take;
-    const useGeo = lat !== undefined && lng !== undefined && radiusKm !== undefined;
-
-    if (q || useGeo) {
-      const query = q?.trim() ? q.trim() : "";
-      const tsQuery = query ? query.split(/\s+/).join(" & ") : "";
-      const latitude = Number(lat);
-      const longitude = Number(lng);
-      const radiusM = Math.min(Number(radiusKm) || 0, 500) * 1000;
-
-      const rows = await this.prisma.$queryRaw<SearchRow[]>`
-        SELECT a.id, a.title, a.slug, a.short_description, a.destination_id,
-               a.rating_average, a.rating_count,
-               ${tsQuery ? Prisma.sql`ts_rank(to_tsvector('simple', coalesce(a.title,'') || ' ' || coalesce(a.description,'')), plainto_tsquery('simple', ${query}))` : Prisma.sql`0`} AS rank,
-               ${useGeo && Number.isFinite(latitude) && Number.isFinite(longitude) ? Prisma.sql`ST_Distance(a.geom, ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography)` : Prisma.sql`NULL`} AS distance_m
-        FROM activities a
-        ${destination ? Prisma.sql`JOIN destinations d ON d.id = a.destination_id` : Prisma.empty}
-        ${category ? Prisma.sql`JOIN activity_categories ac ON ac.activity_id = a.id JOIN categories c ON c.id = ac.category_id` : Prisma.empty}
-        WHERE a.status = 'PUBLISHED'
-          ${tsQuery ? Prisma.sql`AND to_tsvector('simple', coalesce(a.title,'') || ' ' || coalesce(a.description,'')) @@ plainto_tsquery('simple', ${query})` : Prisma.empty}
-          ${destination ? Prisma.sql`AND d.slug = ${destination}` : Prisma.empty}
-          ${category ? Prisma.sql`AND c.slug = ${category}` : Prisma.empty}
-          ${useGeo && Number.isFinite(latitude) && Number.isFinite(longitude) && radiusM > 0 ? Prisma.sql`AND a.geom IS NOT NULL AND ST_DWithin(a.geom, ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography, ${radiusM})` : Prisma.empty}
-        ORDER BY rank DESC, a.rating_average DESC
-        LIMIT ${take} OFFSET ${skip}
-      `;
-
-      const activities = await this.prisma.activity.findMany({
-        where: { id: { in: rows.map((r) => r.id) } },
-        include: { destination: true, images: true, categories: { include: { category: true } }, packages: true },
+  async search(@Query() query: Record<string, string | undefined>) {
+    const page = numeric(query.page, "page", 1, 100000, true) ?? 1;
+    const min = numeric(query.min_price, "min_price", 0, 2147483647);
+    const max = numeric(query.max_price, "max_price", 0, 2147483647);
+    if (min !== undefined && max !== undefined && min > max)
+      throw new BadRequestException({
+        code: "VALIDATION_ERROR",
+        message: "Minimum price exceeds maximum",
       });
-      const byId = new Map(activities.map((a) => [a.id, a]));
-      return {
-        activities: rows.map((r) => ({ ...byId.get(r.id), _rank: Number(r.rank), _distanceM: r.distance_m === null ? null : Number(r.distance_m) })),
-        total: rows.length,
-        page: pageNum,
-        pageSize: take,
-      };
+    const participants = numeric(query.guests, "guests", 1, 1000, true);
+    const date = query.date ? parseBookingDate(query.date) : undefined;
+    const latitude = numeric(query.lat, "lat", -90, 90);
+    const longitude = numeric(query.lng, "lng", -180, 180);
+    const radius = numeric(query.radius, "radius", 0.01, 500);
+    const useGeo = [latitude, longitude, radius].some((v) => v !== undefined);
+    if (useGeo && [latitude, longitude, radius].some((v) => v === undefined))
+      throw new BadRequestException({
+        code: "VALIDATION_ERROR",
+        message: "Latitude, longitude and radius must be supplied together",
+      });
+    let geoIds: string[] | undefined;
+    if (useGeo) {
+      const rows = await this.prisma.$queryRaw<
+        { id: string }[]
+      >`SELECT id FROM activities WHERE geom IS NOT NULL AND ST_DWithin(geom, ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography, ${radius! * 1000})`;
+      geoIds = rows.map((row) => row.id);
     }
-
+    const packages: Prisma.PackageWhereInput = {
+      status: "ACTIVE",
+      base_price: { gte: min, lte: max },
+      ...(participants
+        ? {
+            min_participants: { lte: participants },
+            max_participants: { gte: participants },
+          }
+        : {}),
+    };
+    const q = query.q?.trim().slice(0, 200);
     const where: Prisma.ActivityWhereInput = {
       status: "PUBLISHED",
-      destination: destination ? { slug: destination } : undefined,
-      categories: category ? { some: { category: { slug: category } } } : undefined,
-      packages: {
-        some: {
-          ...(minPrice ? { base_price: { gte: Number(minPrice) } } : {}),
-          ...(maxPrice ? { base_price: { lte: Number(maxPrice) } } : {}),
-        },
-      },
+      vendor: { status: "APPROVED" },
+      id: geoIds ? { in: geoIds } : undefined,
+      destination: query.destination ? { slug: query.destination } : undefined,
+      categories: query.category
+        ? { some: { category: { slug: query.category } } }
+        : undefined,
+      packages: { some: packages },
+      ...(q
+        ? {
+            OR: [
+              { title: { contains: q, mode: "insensitive" } },
+              { description: { contains: q, mode: "insensitive" } },
+              { destination: { name: { contains: q, mode: "insensitive" } } },
+              { vendor: { name: { contains: q, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
     };
-
-    const [activities, total] = await this.prisma.$transaction([
-      this.prisma.activity.findMany({
-        where,
-        include: { destination: true, images: true, categories: { include: { category: true } }, packages: true },
-        orderBy: { created_at: "desc" },
-        skip,
-        take,
-      }),
-      this.prisma.activity.count({ where }),
-    ]);
-
-    return { activities, total, page: pageNum, pageSize: take };
+    // Filter availability before pagination, so totals describe the entire result set.
+    const candidates = await this.prisma.activity.findMany({
+      where,
+      include: {
+        destination: true,
+        images: true,
+        categories: { include: { category: true } },
+        packages: { where: packages },
+      },
+      orderBy: { created_at: "desc" },
+    });
+    const activities: typeof candidates = [];
+    for (const activity of candidates) {
+      if (date) {
+        const available = [];
+        for (const pkg of activity.packages) {
+          const result = await this.availability.getAvailability(pkg.id, date);
+          if (
+            result.slots.some(
+              (slot) =>
+                slot.available >= (participants ?? pkg.min_participants),
+            )
+          )
+            available.push(pkg);
+        }
+        if (!available.length) continue;
+        activities.push({ ...activity, packages: available });
+      } else activities.push(activity);
+    }
+    const price = (activity: (typeof activities)[number]) =>
+      Math.min(...activity.packages.map((pkg) => pkg.base_price));
+    if (query.sort === "price_asc")
+      activities.sort((a, b) => price(a) - price(b));
+    else if (query.sort === "price_desc")
+      activities.sort((a, b) => price(b) - price(a));
+    else if (query.sort === "rating")
+      activities.sort(
+        (a, b) => Number(b.rating_average) - Number(a.rating_average),
+      );
+    const pageSize = 12;
+    return {
+      activities: activities.slice((page - 1) * pageSize, page * pageSize),
+      total: activities.length,
+      page,
+      pageSize,
+    };
   }
 }

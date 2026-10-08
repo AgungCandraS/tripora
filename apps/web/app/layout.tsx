@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
 import Providers from "./components/providers";
+import { SiteMotion } from "./components/site-motion";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Tripora | Temukan pengalaman Bandung",
   description:
     "Booking aktivitas lokal di Bandung Raya. Cari tempat, pilih jadwal, dan berangkat tanpa ribet.",
-  alternates: {
-    canonical: "https://tripora.id",
-  },
   openGraph: {
     title: "Tripora | Temukan pengalaman Bandung",
     description:
@@ -26,7 +24,12 @@ export default function RootLayout({
   return (
     <html lang="id">
       <body>
-        <Providers>{children}</Providers>
+        <a href="#content" className="skip-link">
+          Lompat ke konten
+        </a>
+        <Providers>
+          <SiteMotion>{children}</SiteMotion>
+        </Providers>
       </body>
     </html>
   );

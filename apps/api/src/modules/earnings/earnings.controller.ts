@@ -18,9 +18,25 @@ export class EarningsController {
   async list(@CurrentUser() user: AuthUser) {
     if (!user.vendorId) return { earnings: [] };
     const earnings = await this.prisma.vendorEarning.findMany({
-      where: { vendor_id: user.vendorId },
+      where: {
+        vendor_id: user.vendorId,
+        booking: {
+          payment: { status: { in: ["PAID", "REFUNDED"] } },
+          status: {
+            in: [
+              "CONFIRMED",
+              "CHECKED_IN",
+              "COMPLETED",
+              "REFUND_PENDING",
+              "REFUNDED",
+            ],
+          },
+        },
+      },
       orderBy: { id: "desc" },
-      include: { booking: true },
+      include: {
+        booking: { include: { activity: { select: { title: true } } } },
+      },
     });
     return { earnings };
   }

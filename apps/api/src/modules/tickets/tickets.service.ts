@@ -1,6 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createHmac } from "crypto";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 
 /**
@@ -10,41 +15,67 @@ import { PrismaService } from "../../prisma/prisma.service";
  */
 @Injectable()
 export class TicketsService {
-  constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
 
   private signature(input: string): string {
-    return createHmac("sha256", this.config.get<string>("JWT_ACCESS_SECRET", "ticketing-secret"))
+    return createHmac(
+      "sha256",
+      this.config.get<string>("JWT_ACCESS_SECRET", "ticketing-secret"),
+    )
       .update(input)
       .digest("hex");
   }
 
   private hash(token: string): string {
-    return createHmac("sha256", this.config.get<string>("JWT_ACCESS_SECRET", "ticketing-hash"))
+    return createHmac(
+      "sha256",
+      this.config.get<string>("JWT_ACCESS_SECRET", "ticketing-hash"),
+    )
       .update(token)
       .digest("hex");
   }
 
-  async issueForBooking(bookingId: string) {
-    const existing = await this.prisma.ticket.findUnique({ where: { booking_id: bookingId } });
+  async issueForBooking(
+    bookingId: string,
+    tx: Prisma.TransactionClient = this.prisma,
+  ) {
+    const existing = await tx.ticket.findUnique({
+      where: { booking_id: bookingId },
+    });
     if (existing) return existing;
 
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
-    if (!booking) throw new NotFoundException({ code: "NOT_FOUND", message: "Booking not found" });
+    const booking = await tx.booking.findUnique({ where: { id: bookingId } });
+    if (!booking)
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "Booking not found",
+      });
 
     const raw = `trp-${booking.booking_code.toLowerCase()}-${bookingId.replace(/-/g, "").slice(0, 8)}`;
     const signedToken = `${raw}.${this.signature(raw)}`;
     const tokenHash = this.hash(signedToken);
 
-    return this.prisma.ticket.create({
+    return tx.ticket.create({
       data: { booking_id: bookingId, token_hash: tokenHash, status: "ISSUED" },
     });
   }
 
   /** Returns the full signed token for QR display (deterministic, verifiable). */
   async getPublicToken(bookingId: string): Promise<string> {
-    const ticket = await this.prisma.ticket.findUnique({ where: { booking_id: bookingId } });
-    if (!ticket) throw new NotFoundException({ code: "NOT_FOUND", message: "Ticket not found" });
-    const booking = await this.prisma.booking.findUniqueOrThrow({ where: { id: bookingId } });
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { booking_id: bookingId },
+    });
+    if (!ticket)
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "Ticket not found",
+      });
+    const booking = await this.prisma.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+    });
     const raw = `trp-${booking.booking_code.toLowerCase()}-${bookingId.replace(/-/g, "").slice(0, 8)}`;
     return `${raw}.${this.signature(raw)}`;
   }
@@ -55,11 +86,29 @@ export class TicketsService {
     const raw = token.slice(0, dot);
     const signature = token.slice(dot + 1);
     if (!raw || !signature || this.signature(raw) !== signature) {
-      throw new BadRequestException({ code: "TICKET_INVALID", message: "Invalid ticket signature" });
+      throw new BadRequestException({
+        code: "TICKET_INVALID",
+        message: "Invalid ticket signature",
+      });
     }
-    const ticket = await this.prisma.ticket.findUnique({ where: { token_hash: this.hash(token) } });
-    if (!ticket) throw new BadRequestException({ code: "TICKET_INVALID", message: "Ticket not found" });
-    if (ticket.status === "USED") throw new BadRequestException({ code: "TICKET_ALREADY_USED", message: "Ticket already used" });
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { token_hash: this.hash(token) },
+    });
+    if (!ticket)
+      throw new BadRequestException({
+        code: "TICKET_INVALID",
+        message: "Ticket not found",
+      });
+    if (ticket.status === "USED")
+      throw new BadRequestException({
+        code: "TICKET_ALREADY_USED",
+        message: "Ticket already used",
+      });
+    if (ticket.status !== "ISSUED")
+      throw new BadRequestException({
+        code: "TICKET_INVALID",
+        message: "Ticket is no longer valid",
+      });
     return ticket;
   }
 }

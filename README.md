@@ -27,6 +27,10 @@ semuanya beraudit dan terisolasi per vendor.
 
 ## Fitur-fitur Utama
 
+- **Katalog Bandung**: 998 tempat dari snapshot lokal, pencarian nama/area/kategori,
+  tempat tersimpan di browser, panduan kawasan, detail lokasi dan tautan peta.
+  Harga asumsi scraper, jam buka tidak terverifikasi, serta foto stok tidak ditampilkan.
+  Katalog tempat terpisah dari aktivitas mitra yang dapat dipesan.
 - **Guest Checkout + Booking Aman**: tanpa wajib daftar (nama, email, WhatsApp);
   reservation terikat sesi browser, hold kedaluwarsa melepas kapasitas otomatis.
 - **Anti-Overselling**: advisory lock + row lock PostgreSQL per slot; slot habis
@@ -78,7 +82,10 @@ Alur kritis terverifikasi hidup: register + verifikasi email → availability �
 reservation hold → booking transaksional → webhook idempoten → CONFIRMED +
 tiket → QR check-in → tolak double-scan; duplikat unpaid ditawari lanjut/batal;
 refund tercatat dengan split liabilitas; payout tak bisa melebihi saldo.
-13 unit test backend lolos; typecheck, lint, dan build api + web hijau.
+Validasi redesign: 42 tes API (termasuk integrasi PostgreSQL), 4 tes outbox worker,
+3 tes import data, verifikasi rekonsiliasi dan HTTP. Typecheck, lint, serta build
+web/API/worker lolos. Lihat [laporan implementasi](audit/2026-10-08-implementation.md)
+untuk konfigurasi runtime, batas verifikasi, dan migrasi yang perlu diterapkan.
 
 ## Cara Menggunakan Aplikasi Web
 

@@ -11,14 +11,59 @@ export const TZ_OFFSETS_MINUTES: Record<string, number> = {
   "Asia/Jayapura": 9 * 60,
 };
 
+export function parseBookingDate(value: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new BadRequestException({
+      code: "VALIDATION_ERROR",
+      message: "Invalid calendar date",
+    });
+  }
+  const date = new Date(`${value}T00:00:00Z`);
+  if (
+    !Number.isFinite(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== value
+  ) {
+    throw new BadRequestException({
+      code: "VALIDATION_ERROR",
+      message: "Invalid calendar date",
+    });
+  }
+  return date;
+}
+
+export function scheduleApplies(
+  schedule: {
+    status: string;
+    specific_date: Date | null;
+    day_of_week: number | null;
+  },
+  date: Date,
+): boolean {
+  return (
+    schedule.status === "ACTIVE" &&
+    (schedule.specific_date
+      ? schedule.specific_date.toISOString().slice(0, 10) ===
+        date.toISOString().slice(0, 10)
+      : schedule.day_of_week === date.getUTCDay())
+  );
+}
+
 export function tzOffsetMinutes(timezone: string): number {
   return TZ_OFFSETS_MINUTES[timezone] ?? TZ_OFFSETS_MINUTES["Asia/Jakarta"];
 }
 
 /** Milliseconds of `date` (UTC midnight) at wall-clock "HH:MM" in tz, returned as UTC epoch. */
-export function slotStartUtc(date: Date, startTime: string, timezone = "Asia/Jakarta"): number {
+export function slotStartUtc(
+  date: Date,
+  startTime: string,
+  timezone = "Asia/Jakarta",
+): number {
   const [h, m] = startTime.split(":").map(Number);
-  const dayStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const dayStart = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+  );
   return dayStart + (h * 60 + m - tzOffsetMinutes(timezone)) * 60 * 1000;
 }
 
@@ -39,17 +84,32 @@ export function validateSlotTiming(args: {
   timezone?: string;
   now?: number;
 }): { slotStart: number } {
-  const { date, startTime, cutoffMinutes, timezone = "Asia/Jakarta", now = Date.now() } = args;
+  const {
+    date,
+    startTime,
+    cutoffMinutes,
+    timezone = "Asia/Jakarta",
+    now = Date.now(),
+  } = args;
   const dateIso = date.toISOString().slice(0, 10);
   if (dateIso < todayIsoInTz(now, timezone)) {
-    throw new BadRequestException({ code: "BOOKING_DATE_IN_PAST", message: "Booking date is in the past." });
+    throw new BadRequestException({
+      code: "BOOKING_DATE_IN_PAST",
+      message: "Booking date is in the past.",
+    });
   }
   const slotStart = slotStartUtc(date, startTime, timezone);
   if (slotStart <= now) {
-    throw new BadRequestException({ code: "SLOT_IN_PAST", message: "This slot has already started." });
+    throw new BadRequestException({
+      code: "SLOT_IN_PAST",
+      message: "This slot has already started.",
+    });
   }
   if (now >= slotStart - cutoffMinutes * 60 * 1000) {
-    throw new BadRequestException({ code: "BOOKING_CUTOFF_REACHED", message: "Booking cutoff for this slot has passed." });
+    throw new BadRequestException({
+      code: "BOOKING_CUTOFF_REACHED",
+      message: "Booking cutoff for this slot has passed.",
+    });
   }
   return { slotStart };
 }

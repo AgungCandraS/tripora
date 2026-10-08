@@ -5,9 +5,21 @@ import { Clock, MapPin, Star } from "@phosphor-icons/react";
 import Image from "next/image";
 import Link from "next/link";
 import { formatIDR } from "../lib/api";
-import { durationText, imageFor, minPrice, ratingText, type ApiActivity } from "../lib/types";
+import {
+  durationText,
+  imageFor,
+  minPrice,
+  ratingText,
+  type ApiActivity,
+} from "../lib/types";
 
-export function ActivityCard({ activity, index = 0 }: { activity: ApiActivity; index?: number }) {
+export function ActivityCard({
+  activity,
+  index = 0,
+}: {
+  activity: ApiActivity;
+  index?: number;
+}) {
   const category = activity.categories?.[0]?.category.name ?? "Aktivitas";
   const place = activity.destination?.name ?? "";
   return (
@@ -15,12 +27,19 @@ export function ActivityCard({ activity, index = 0 }: { activity: ApiActivity; i
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
-      transition={{ duration: 0.55, delay: (index % 3) * 0.08, ease: [0.16, 1, 0.3, 1] }}
+      transition={{
+        duration: 0.55,
+        delay: (index % 3) * 0.08,
+        ease: [0.16, 1, 0.3, 1],
+      }}
       whileHover={{ y: -4 }}
-      className="image-card group overflow-hidden rounded-[16px] border border-line bg-paper transition-shadow duration-300 hover:shadow-[0_18px_45px_rgba(16,35,30,0.12)]"
+      className="image-card group overflow-hidden rounded-[16px] border border-line bg-white transition-shadow duration-300 hover:shadow-[0_18px_45px_rgba(16,35,30,0.12)]"
     >
-      <Link href={`/activities/${activity.slug}`} aria-label={`Lihat ${activity.title}`}>
-        <div className="relative aspect-[1.12] overflow-hidden bg-sage">
+      <Link
+        href={`/activities/${activity.slug}`}
+        aria-label={`Lihat ${activity.title}`}
+      >
+        <div className="relative aspect-[4/3] overflow-hidden bg-sage">
           <Image
             src={imageFor(activity)}
             alt={activity.title}
@@ -53,7 +72,9 @@ export function ActivityCard({ activity, index = 0 }: { activity: ApiActivity; i
                 Mulai dari
               </p>
               <p className="mt-1 text-base font-bold text-ink">
-                {formatIDR(minPrice(activity))}{" "}
+                {activity.packages?.length
+                  ? formatIDR(minPrice(activity))
+                  : "Paket belum tersedia"}{" "}
                 <span className="text-xs font-medium text-ink/50">/ orang</span>
               </p>
             </div>

@@ -1,4 +1,10 @@
-import { BadRequestException, Controller, Get, Param, Query } from "@nestjs/common";
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  Query,
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { NotFoundException } from "@nestjs/common";
 import { Public } from "../../common/decorators/auth.decorators";
@@ -15,14 +21,25 @@ export class ActivitiesController {
 
   @Public()
   @Get()
-  async list(@Query("destination") destination?: string, @Query("category") category?: string) {
+  async list(
+    @Query("destination") destination?: string,
+    @Query("category") category?: string,
+  ) {
     return this.prisma.activity.findMany({
       where: {
         status: "PUBLISHED",
+        vendor: { status: "APPROVED" },
         destination: destination ? { slug: destination } : undefined,
-        categories: category ? { some: { category: { slug: category } } } : undefined,
+        categories: category
+          ? { some: { category: { slug: category } } }
+          : undefined,
       },
-      include: { destination: true, images: true, categories: { include: { category: true } }, packages: true },
+      include: {
+        destination: true,
+        images: true,
+        categories: { include: { category: true } },
+        packages: { where: { status: "ACTIVE" } },
+      },
       orderBy: { created_at: "desc" },
     });
   }
@@ -31,10 +48,23 @@ export class ActivitiesController {
   @Get(":slug")
   async get(@Param("slug") slug: string) {
     const activity = await this.prisma.activity.findUnique({
-      where: { slug },
-      include: { destination: true, vendor: { select: { id: true, name: true, slug: true } }, images: true, categories: { include: { category: true } }, packages: { include: { schedules: true } } },
+      where: { slug, status: "PUBLISHED", vendor: { status: "APPROVED" } },
+      include: {
+        destination: true,
+        vendor: { select: { id: true, name: true, slug: true } },
+        images: true,
+        categories: { include: { category: true } },
+        packages: {
+          where: { status: "ACTIVE" },
+          include: { schedules: { where: { status: "ACTIVE" } } },
+        },
+      },
     });
-    if (!activity) throw new NotFoundException({ code: "NOT_FOUND", message: "Activity not found" });
+    if (!activity)
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "Activity not found",
+      });
     return activity;
   }
 }
@@ -49,7 +79,11 @@ export class VendorActivitiesController {
   @Roles("VENDOR_OWNER", "VENDOR_STAFF", "ADMIN")
   @Permissions("activity.read")
   async listMine(@CurrentUser() user: AuthUser) {
-    if (!user.vendorId) throw new BadRequestException({ code: "FORBIDDEN", message: "No vendor attached" });
+    if (!user.vendorId)
+      throw new BadRequestException({
+        code: "FORBIDDEN",
+        message: "No vendor attached",
+      });
     return this.prisma.activity.findMany({
       where: { vendor_id: user.vendorId },
       include: { packages: true },

@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { hasBookingAccess } from "../../common/utils/booking-access";
+import { AuthUser } from "../../common/interfaces/auth-user.interface";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
@@ -17,7 +24,7 @@ export class PaymentsService {
     private readonly mayar: MayarProvider,
     private readonly tickets: TicketsService,
     private readonly notifications: NotificationsProducer,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
   ) {}
 
   /** Gateway tunggal: Mayar per PRD §41. Abstraksi provider dipertahankan untuk masa depan. */
@@ -29,8 +36,16 @@ export class PaymentsService {
     return this.mayar;
   }
 
-  async find(id: string) {
-    const payment = await this.prisma.payment.findUniqueOrThrow({ where: { id } });
+  async find(id: string, user: AuthUser) {
+    const payment = await this.prisma.payment.findUniqueOrThrow({
+      where: { id },
+      include: { booking: true },
+    });
+    if (payment.booking.user_id !== user.id && !user.roles.includes("ADMIN"))
+      throw new ForbiddenException({
+        code: "FORBIDDEN",
+        message: "Not your payment",
+      });
     return payment;
   }
 
@@ -39,22 +54,46 @@ export class PaymentsService {
    * NEVER available in production. Requires MAYAR_SKIP_WEBHOOK_VERIFY=true.
    * Reuses the real webhook path (idempotency, audit, ticket, notification).
    */
-  async simulate(bookingCode: string) {
+  async simulate(bookingCode: string, token?: string) {
     if (this.config.get<string>("NODE_ENV", "development") === "production") {
-      throw new BadRequestException({ code: "FORBIDDEN", message: "Simulation is disabled in production" });
+      throw new BadRequestException({
+        code: "FORBIDDEN",
+        message: "Simulation is disabled in production",
+      });
     }
-    if (this.config.get<string>("MAYAR_SKIP_WEBHOOK_VERIFY", "false") !== "true") {
-      throw new BadRequestException({ code: "FORBIDDEN", message: "Set MAYAR_SKIP_WEBHOOK_VERIFY=true to simulate payments" });
+    if (
+      this.config.get<string>("MAYAR_SKIP_WEBHOOK_VERIFY", "false") !== "true"
+    ) {
+      throw new BadRequestException({
+        code: "FORBIDDEN",
+        message: "Set MAYAR_SKIP_WEBHOOK_VERIFY=true to simulate payments",
+      });
     }
     const booking = await this.prisma.booking.findUnique({
       where: { booking_code: bookingCode },
       include: { payment: true },
     });
-    if (!booking || !booking.payment) throw new NotFoundException({ code: "NOT_FOUND", message: "Payable booking not found" });
-    if (booking.status !== "PENDING_PAYMENT" || booking.payment.status !== "PENDING") {
-      throw new BadRequestException({ code: "INVALID_STATE_TRANSITION", message: "Booking is not payable" });
+    if (!booking || !booking.payment)
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "Payable booking not found",
+      });
+    if (
+      booking.status !== "PENDING_PAYMENT" ||
+      booking.payment.status !== "PENDING"
+    ) {
+      throw new BadRequestException({
+        code: "INVALID_STATE_TRANSITION",
+        message: "Booking is not payable",
+      });
     }
+    this.assertAccess(booking, undefined, token);
     const { randomUUID } = await import("crypto");
+    if (!booking.payment.provider_reference)
+      await this.prisma.payment.update({
+        where: { id: booking.payment.id },
+        data: { provider_reference: booking.id },
+      });
     return this.handleWebhook({
       event: "payment.received",
       data: {
@@ -67,115 +106,233 @@ export class PaymentsService {
     });
   }
 
-  async create(bookingCode: string) {
-    const booking = await this.prisma.booking.findUnique({
-      where: { booking_code: bookingCode },
-      include: { payment: true, activity: true },
-    });
-    if (!booking) throw new NotFoundException({ code: "NOT_FOUND", message: "Booking not found" });
-    if (booking.status !== "PENDING_PAYMENT") {
-      throw new BadRequestException({ code: "INVALID_STATE_TRANSITION", message: "Booking is not payable" });
+  private assertAccess(
+    booking: { id: string; user_id: string | null },
+    userId?: string,
+    token?: string,
+  ) {
+    if (userId && booking.user_id === userId) return;
+    if (
+      !hasBookingAccess(
+        booking.id,
+        token,
+        this.config.get<string>("JWT_ACCESS_SECRET", "ticketing-secret"),
+      )
+    ) {
+      throw new ForbiddenException({
+        code: "FORBIDDEN",
+        message: "Verify booking ownership before paying",
+      });
     }
-
-    const pg = this.provider();
-    const created = await pg.createPayment({
-      bookingId: booking.id,
-      bookingCode: booking.booking_code,
-      customerName: booking.booker_name,
-      customerEmail: booking.booker_email,
-      customerPhone: booking.booker_phone,
-      amount: booking.total_amount,
-      description: `${booking.activity.title} · ${booking.booking_code}`,
-      expiryMinutes: await this.settings.getNumber("PAYMENT_EXPIRY_MINUTES", this.config.get<number>("PAYMENT_EXPIRY_MINUTES", 30)),
-    });
-
-    const payment = booking.payment
-      ? await this.prisma.payment.update({
-          where: { id: booking.payment.id },
-          data: { status: "PENDING", provider: created.provider, provider_reference: created.providerReference },
-        })
-      : await this.prisma.payment.create({
-          data: { booking_id: booking.id, provider: created.provider, provider_reference: created.providerReference, amount: booking.total_amount, status: "PENDING" },
-        });
-
-    return { paymentId: payment.id, paymentUrl: created.paymentUrl, expiresAt: created.expiresAt };
   }
 
-  /**
-   * Provider-agnostic idempotent webhook. Sequence per PAYMENT_FLOW.md:
-   * verify signature → verify order → verify amount → persist raw event →
-   * idempotency → explicit state transition → side effects once.
-   */
-  async handleWebhook(rawPayload: unknown) {
-    const pg = this.providerForEvent(rawPayload);
-    const normalized = await pg.verifyAndNormalizeWebhook(rawPayload as never);
-    const { providerEventId, eventType, providerReference, amount, status } = normalized;
-
-    const payment = await this.prisma.payment.findFirst({
-      where: { provider_reference: providerReference ?? undefined },
-      include: { booking: true },
+  async create(bookingCode: string, userId?: string, token?: string) {
+    const found = await this.prisma.booking.findUnique({
+      where: { booking_code: bookingCode },
     });
-    if (!payment) throw new NotFoundException({ code: "NOT_FOUND", message: "Payment not found" });
-
-    // Amount verification: never confirm when provider amount differs (PRD §43, §110).
-    if (typeof amount === "number" && Number.isFinite(amount) && amount !== payment.amount) {
-      await this.audit.log({
-        action: "WEBHOOK",
-        resourceType: "Payment",
-        resourceId: payment.id,
-        metadata: { reason: "AMOUNT_MISMATCH", providerEventId, expected: payment.amount, received: amount },
+    if (!found)
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "Booking not found",
       });
-      throw new BadRequestException({ code: "PAYMENT_AMOUNT_MISMATCH", message: "Provider amount does not match booking total" });
-    }
-
-    // Idempotency: if this event already stored, return current state (no double processing).
-    const existingEvent = await this.prisma.paymentEvent.findUnique({ where: { provider_event_id: providerEventId } });
-    if (existingEvent) {
-      return { idempotent: true, payment: { id: payment.id, status: payment.status } };
-    }
-
-    const event = await this.prisma.paymentEvent
-      .create({
-        data: {
-          payment_id: payment.id,
-          provider_event_id: providerEventId,
-          event_type: eventType,
-          raw_payload: rawPayload as object,
-        },
-      })
-      .catch(async (e) => {
-        // Race: another webhook inserted it concurrently -> idempotent.
-        if (e?.code === "P2002") {
-          const found = await this.prisma.paymentEvent.findUnique({ where: { provider_event_id: providerEventId } });
-          if (found) return found;
+    this.assertAccess(found, userId, token);
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM bookings WHERE id = ${found.id}::uuid FOR UPDATE`;
+        const booking = await tx.booking.findUniqueOrThrow({
+          where: { id: found.id },
+          include: { payment: true, activity: true },
+        });
+        const deadline = booking.payment?.expires_at;
+        if (
+          booking.status !== "PENDING_PAYMENT" ||
+          !deadline ||
+          deadline <= new Date()
+        ) {
+          throw new BadRequestException({
+            code: "PAYMENT_EXPIRED",
+            message: "Booking is no longer payable",
+          });
         }
-        throw e;
-      });
+        if (booking.payment?.payment_url)
+          return {
+            paymentId: booking.payment.id,
+            paymentUrl: booking.payment.payment_url,
+            expiresAt: deadline,
+          };
+        const created = await this.provider().createPayment({
+          bookingId: booking.id,
+          bookingCode: booking.booking_code,
+          customerName: booking.booker_name,
+          customerEmail: booking.booker_email,
+          customerPhone: booking.booker_phone,
+          amount: booking.total_amount,
+          description: `${booking.activity.title} - ${booking.booking_code}`,
+          expiryMinutes: Math.max(
+            1,
+            Math.ceil((deadline.getTime() - Date.now()) / 60000),
+          ),
+          expiresAt: deadline,
+        });
+        if (!created.providerReference)
+          throw new BadRequestException({
+            code: "PAYMENT_FAILED",
+            message: "Provider did not return an invoice reference",
+          });
+        const payment = await tx.payment.update({
+          where: { booking_id: booking.id },
+          data: {
+            provider: created.provider,
+            provider_reference: created.providerReference,
+            payment_url: created.paymentUrl,
+          },
+        });
+        return {
+          paymentId: payment.id,
+          paymentUrl: payment.payment_url,
+          expiresAt: deadline,
+        };
+      },
+      { timeout: 20000 },
+    );
+  }
 
-    if (status === "PAID" && payment.booking.status === "PENDING_PAYMENT") {
-      await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: "PAID", paid_at: new Date() },
+  /** All durable effects commit together; a retry can recover an unprocessed event. */
+  async handleWebhook(rawPayload: unknown) {
+    const normalized = await this.providerForEvent(
+      rawPayload,
+    ).verifyAndNormalizeWebhook(rawPayload as never);
+    const { providerEventId, eventType, providerReference, amount, status } =
+      normalized;
+    if (!providerEventId || !providerReference || !Number.isFinite(amount))
+      throw new BadRequestException({
+        code: "PAYMENT_FAILED",
+        message: "Incomplete payment event",
       });
-      await this.prisma.booking.update({
-        where: { id: payment.booking_id },
-        data: { status: "CONFIRMED" },
+    const found = await this.prisma.payment.findFirst({
+      where: {
+        provider: this.providerForEvent(rawPayload).name,
+        provider_reference: providerReference,
+      },
+    });
+    if (!found)
+      throw new NotFoundException({
+        code: "NOT_FOUND",
+        message: "Payment not found",
       });
-      await this.tickets.issueForBooking(payment.booking_id);
-      await this.notifications.enqueueBookingConfirmed(payment.booking_id);
-      await this.audit.log({ action: "WEBHOOK", resourceType: "Payment", resourceId: payment.id, metadata: { providerEventId, amount } });
-    } else if (status === "FAILED" && ["PENDING_PAYMENT", "PAID"].includes(payment.booking.status)) {
-      // Terminal provider failure/expiry: booking EXPIRED releases capacity (PRD §44).
-      await this.prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } });
-      if (payment.booking.status === "PENDING_PAYMENT") {
-        await this.prisma.booking.update({ where: { id: payment.booking_id }, data: { status: "EXPIRED" } });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM bookings WHERE id = ${found.booking_id}::uuid FOR UPDATE`;
+      const payment = await tx.payment.findUniqueOrThrow({
+        where: { id: found.id },
+        include: { booking: true },
+      });
+      if (amount !== payment.amount)
+        throw new BadRequestException({
+          code: "PAYMENT_AMOUNT_MISMATCH",
+          message: "Provider amount does not match booking total",
+        });
+      // Serialize event identity too: an event cannot be reused against a different invoice.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"payment-event:" + providerEventId}))`;
+      const existing = await tx.paymentEvent.findUnique({
+        where: { provider_event_id: providerEventId },
+      });
+      if (existing && existing.payment_id !== payment.id)
+        throw new BadRequestException({
+          code: "PAYMENT_FAILED",
+          message: "Event belongs to another payment",
+        });
+      if (existing?.processed_at)
+        return {
+          idempotent: true,
+          payment: { id: payment.id, status: payment.status },
+        };
+      const event =
+        existing ??
+        (await tx.paymentEvent.create({
+          data: {
+            payment_id: payment.id,
+            provider_event_id: providerEventId,
+            event_type: eventType,
+            raw_payload: rawPayload as object,
+          },
+        }));
+      let nextStatus = payment.status;
+      if (status === "PAID" && !["PAID", "REFUNDED"].includes(payment.status)) {
+        const timely =
+          payment.booking.status === "PENDING_PAYMENT" &&
+          payment.expires_at !== null &&
+          payment.expires_at > new Date();
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: "PAID", paid_at: new Date() },
+        });
+        nextStatus = "PAID";
+        await tx.booking.update({
+          where: { id: payment.booking_id },
+          data: { status: timely ? "CONFIRMED" : "REFUND_PENDING" },
+        });
+        if (timely) {
+          await this.tickets.issueForBooking(payment.booking_id, tx);
+          await tx.notification.upsert({
+            where: { dedupe_key: `booking-confirmed:${payment.booking_id}` },
+            update: {},
+            create: {
+              dedupe_key: `booking-confirmed:${payment.booking_id}`,
+              booking_id: payment.booking_id,
+              channel: "email",
+              template: "booking_confirmed",
+              status: "QUEUED",
+              payload: {
+                type: "booking_confirmed",
+                to: payment.booking.booker_email,
+                bookingCode: payment.booking.booking_code,
+              },
+            },
+          });
+        } else {
+          await tx.refund.create({
+            data: {
+              booking_id: payment.booking_id,
+              payment_id: payment.id,
+              type: "full",
+              amount: payment.amount,
+              gross_amount: payment.amount,
+              vendor_liability: 0,
+              platform_liability: payment.amount,
+              reason:
+                "Payment arrived after the booking deadline; capacity was not reconfirmed",
+              status: "PENDING",
+              previous_booking_status: payment.booking.status,
+            },
+          });
+        }
+        await tx.auditLog.create({
+          data: {
+            action: "WEBHOOK",
+            resource_type: "Payment",
+            resource_id: payment.id,
+            metadata: { providerEventId, amount, late: !timely },
+          },
+        });
+      } else if (status === "FAILED" && payment.status === "PENDING") {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: "FAILED" },
+        });
+        await tx.booking.updateMany({
+          where: { id: payment.booking_id, status: "PENDING_PAYMENT" },
+          data: { status: "EXPIRED" },
+        });
+        nextStatus = "FAILED";
       }
-      await this.audit.log({ action: "WEBHOOK", resourceType: "Payment", resourceId: payment.id, metadata: { reason: "PAYMENT_FAILED", providerEventId, eventType } });
-    }
-    // PENDING / REFUNDED / already-transitioned: event persisted, no state change.
-
-    void event;
-    const fresh = await this.prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
-    return { idempotent: false, payment: { id: fresh.id, status: fresh.status } };
+      await tx.paymentEvent.update({
+        where: { id: event.id },
+        data: { processed_at: new Date() },
+      });
+      return {
+        idempotent: false,
+        payment: { id: payment.id, status: nextStatus },
+      };
+    });
   }
 }

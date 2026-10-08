@@ -3,7 +3,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { ActivityCard } from "../../components/activity-card";
-import { WorkspaceHeader, WorkspaceShell } from "../../components/workspace-shell";
+import {
+  WorkspaceHeader,
+  WorkspaceShell,
+} from "../../components/workspace-shell";
 import { useAuth } from "../../components/providers";
 import { api } from "../../lib/api";
 import type { ApiActivity } from "../../lib/types";
@@ -13,12 +16,12 @@ interface WishlistRow {
 }
 
 export default function WishlistPage() {
-  const { token } = useAuth();
+  const { authenticated, token } = useAuth();
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["wishlist"],
     queryFn: () => api.get<{ wishlist: WishlistRow[] }>("/me/wishlist", token),
-    enabled: Boolean(token),
+    enabled: Boolean(authenticated),
   });
   const rows = query.data?.wishlist ?? [];
 
@@ -29,15 +32,30 @@ export default function WishlistPage() {
 
   return (
     <WorkspaceShell role="customer" current="/account/wishlist">
-      <WorkspaceHeader eyebrow="Wishlist" title="Yang ingin kamu coba." description="Tersimpan di akunmu — sinkron di semua perangkat." />
+      <WorkspaceHeader
+        eyebrow="Wishlist"
+        title="Yang ingin kamu coba."
+        description="Tersimpan di akunmu — sinkron di semua perangkat."
+      />
       {query.isLoading ? (
-        <div className="mt-8 grid animate-pulse gap-5 md:grid-cols-3" aria-busy="true" aria-label="Memuat wishlist">
-          {[0, 1, 2].map((i) => <div key={i} className="h-72 rounded-[16px] bg-paper" />)}
+        <div
+          className="mt-8 grid animate-pulse gap-5 md:grid-cols-3"
+          aria-busy="true"
+          aria-label="Memuat wishlist"
+        >
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-72 rounded-[16px] bg-paper" />
+          ))}
         </div>
       ) : rows.length === 0 ? (
         <p className="mt-8 rounded-[12px] border border-dashed border-line bg-paper px-5 py-10 text-center text-sm text-ink/55">
           Wishlist kosong. Simpan aktivitas dari halaman explore.{" "}
-          <Link href="/explore" className="font-bold text-coral-dark underline underline-offset-4">Explore</Link>
+          <Link
+            href="/explore"
+            className="font-bold text-coral-dark underline underline-offset-4"
+          >
+            Explore
+          </Link>
         </p>
       ) : (
         <div className="mt-8 grid gap-5 md:grid-cols-3">

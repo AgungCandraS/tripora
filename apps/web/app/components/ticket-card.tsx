@@ -40,13 +40,24 @@ export function TicketCard({
           <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-coral">
             E-ticket · {status}
           </p>
-          <p className="mt-1 font-mono text-sm font-bold tracking-wider">{code}</p>
+          <p className="mt-1 font-mono text-sm font-bold tracking-wider">
+            {code}
+          </p>
         </div>
         <div className="rounded-[10px] bg-paper p-2">
-          {token ? (
-            <QRCodeSVG value={token} size={72} aria-label={`QR tiket ${code}`} />
+          {token && ["CONFIRMED", "PAID"].includes(status) ? (
+            <QRCodeSVG
+              value={token}
+              size={72}
+              aria-label={`QR tiket ${code}`}
+            />
           ) : (
-            <QrCode size={40} weight="duotone" className="text-ink" aria-hidden="true" />
+            <QrCode
+              size={40}
+              weight="duotone"
+              className="text-ink"
+              aria-hidden="true"
+            />
           )}
         </div>
       </div>
@@ -71,8 +82,8 @@ export function TicketCard({
           ))}
         </dl>
         <p className="mt-4 rounded-[10px] bg-soft px-3.5 py-2.5 text-[11px] leading-5 text-ink/55">
-          QR berisi signed ticket token — bukan booking ID polos. Satu tiket satu
-          scan. Tunjukkan layar ini saat check-in.
+          QR berisi signed ticket token — bukan booking ID polos. Satu tiket
+          satu scan. Tunjukkan layar ini saat check-in.
         </p>
       </div>
     </motion.div>

@@ -2,7 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Funnel, MagnifyingGlass, MapPin, SlidersHorizontal } from "@phosphor-icons/react";
+import {
+  Funnel,
+  MagnifyingGlass,
+  MapPin,
+  SlidersHorizontal,
+} from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import type { ApiActivity, ApiCategory, ApiDestination } from "../lib/types";
@@ -46,9 +51,32 @@ export function ExploreClient({
   const [guests, setGuests] = useState(initialGuests);
   const [category, setCategory] = useState(initialCategory);
   const [area, setArea] = useState(initialArea);
+  const [page, setPage] = useState(1);
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [sort, setSort] = useState("newest");
+  const [ready, setReady] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const debouncedQ = useDebounced(query);
 
+  useEffect(() => {
+    function restore() {
+      const params = new URLSearchParams(window.location.search);
+      setQuery(params.get("q") ?? initialQuery);
+      setDate(params.get("date") ?? initialDate);
+      setGuests(params.get("guests") ?? initialGuests);
+      setCategory(params.get("category") ?? initialCategory);
+      setArea(params.get("destination") ?? initialArea);
+      setMinPrice(params.get("min_price") ?? "");
+      setMaxPrice(params.get("max_price") ?? "");
+      setSort(params.get("sort") ?? "newest");
+      setPage(Math.max(1, Math.trunc(Number(params.get("page")) || 1)));
+      setReady(true);
+    }
+    restore();
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, [initialQuery, initialDate, initialGuests, initialCategory, initialArea]);
   const { data: categories } = useQuery({
     queryKey: ["categories"],
     queryFn: () => api.get<ApiCategory[]>("/categories"),
@@ -63,13 +91,29 @@ export function ExploreClient({
   if (category) params.set("category", category);
   if (area) params.set("destination", area);
 
+  if (date) params.set("date", date);
+  if (guests) params.set("guests", String(parseInt(guests, 10)));
+  if (minPrice) params.set("min_price", minPrice);
+  if (maxPrice) params.set("max_price", maxPrice);
+  params.set("page", String(page));
+  params.set("sort", sort);
+  const queryString = params.toString();
+  useEffect(() => {
+    if (ready && debouncedQ === query)
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}?${queryString}`,
+      );
+  }, [queryString, ready, debouncedQ, query]);
   const search = useQuery({
-    queryKey: ["search", debouncedQ, category, area],
+    enabled: ready,
+    queryKey: ["search", queryString],
     queryFn: () => api.get<SearchResponse>(`/search?${params.toString()}`),
   });
 
   const results = search.data?.activities ?? [];
-  const loading = search.isLoading;
+  const loading = search.isPending;
   const failed = search.isError;
 
   function reset() {
@@ -78,10 +122,17 @@ export function ExploreClient({
     setArea("");
     setDate("");
     setGuests("");
+    setMinPrice("");
+    setMaxPrice("");
+    setSort("newest");
+    setPage(1);
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] px-5 pb-20 sm:px-8 lg:px-12">
+    <div
+      id="content"
+      className="mx-auto max-w-[1400px] px-5 pb-20 sm:px-8 lg:px-12"
+    >
       <div className="max-w-[720px] pt-14 sm:pt-20">
         <motion.div
           initial={{ opacity: 0, y: 22 }}
@@ -91,13 +142,12 @@ export function ExploreClient({
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-coral-dark">
             Explore Bandung Raya
           </p>
-          <h1 className="display-text mt-3 text-3xl font-bold leading-[1.05] tracking-[-0.05em] sm:text-5xl">
-            {title}
-          </h1>
-          <p className="mt-5 max-w-[560px] text-base leading-7 text-ink/60">{description}</p>
+          <h1 className="editorial-title mt-3 text-4xl sm:text-6xl">{title}</h1>
+          <p className="mt-5 max-w-[560px] text-base leading-7 text-ink/60">
+            {description}
+          </p>
         </motion.div>
       </div>
-
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
@@ -109,7 +159,10 @@ export function ExploreClient({
           <span className="sr-only">Cari aktivitas</span>
           <input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setPage(1);
+              setQuery(event.target.value);
+            }}
             placeholder="Cari aktivitas, area, vendor…"
             className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-paper/45"
           />
@@ -119,10 +172,15 @@ export function ExploreClient({
           <span className="sr-only">Pilih area</span>
           <select
             value={area}
-            onChange={(event) => setArea(event.target.value)}
+            onChange={(event) => {
+              setPage(1);
+              setArea(event.target.value);
+            }}
             className="w-full bg-transparent text-sm text-paper outline-none [&>option]:text-ink"
           >
-            <option className="text-ink" value="">Semua area</option>
+            <option className="text-ink" value="">
+              Semua area
+            </option>
             {(destinations ?? []).map((d) => (
               <option className="text-ink" key={d.slug} value={d.slug}>
                 {d.name}
@@ -139,7 +197,6 @@ export function ExploreClient({
           <SlidersHorizontal size={17} /> Filter
         </button>
       </motion.div>
-
       <AnimatePresence initial={false}>
         {showFilters && (
           <motion.div
@@ -152,15 +209,100 @@ export function ExploreClient({
             <CategoryPanel
               categories={categories ?? []}
               category={category}
-              onPick={setCategory}
+              onPick={(value) => {
+                setPage(1);
+                setCategory(value);
+              }}
             />
           </motion.div>
         )}
       </AnimatePresence>
       <div className="mt-5 hidden lg:block">
-        <CategoryPanel categories={categories ?? []} category={category} onPick={setCategory} />
+        <CategoryPanel
+          categories={categories ?? []}
+          category={category}
+          onPick={(value) => {
+            setPage(1);
+            setCategory(value);
+          }}
+        />
       </div>
-
+      <div className="mt-5 grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <label className="text-xs font-semibold">
+          Tanggal keberangkatan
+          <input
+            type="date"
+            value={date}
+            onChange={(event) => {
+              setPage(1);
+              setDate(event.target.value);
+            }}
+            className="mt-2 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm"
+          />
+        </label>
+        <label className="text-xs font-semibold">
+          Peserta
+          <select
+            value={guests ? String(parseInt(guests, 10)) : ""}
+            onChange={(event) => {
+              setPage(1);
+              setGuests(event.target.value);
+            }}
+            className="mt-2 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm"
+          >
+            <option value="">Semua jumlah</option>
+            {Array.from({ length: 20 }, (_, i) => (
+              <option key={i} value={i + 1}>
+                {i + 1} orang
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs font-semibold">
+          Harga minimum
+          <input
+            type="number"
+            min="0"
+            value={minPrice}
+            onChange={(event) => {
+              setPage(1);
+              setMinPrice(event.target.value);
+            }}
+            placeholder="Rp0"
+            className="mt-2 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm"
+          />
+        </label>
+        <label className="text-xs font-semibold">
+          Harga maksimum
+          <input
+            type="number"
+            min="0"
+            value={maxPrice}
+            onChange={(event) => {
+              setPage(1);
+              setMaxPrice(event.target.value);
+            }}
+            placeholder="Tanpa batas"
+            className="mt-2 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm"
+          />
+        </label>
+        <label className="text-xs font-semibold">
+          Urutkan
+          <select
+            value={sort}
+            onChange={(event) => {
+              setPage(1);
+              setSort(event.target.value);
+            }}
+            className="mt-2 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm"
+          >
+            <option value="newest">Terbaru</option>
+            <option value="price_asc">Harga terendah</option>
+            <option value="price_desc">Harga tertinggi</option>
+            <option value="rating">Rating</option>
+          </select>
+        </label>
+      </div>
       <div className="mt-10 flex items-end justify-between gap-4 border-b border-line pb-5">
         <div>
           <p className="text-sm text-ink/55" role="status">
@@ -170,11 +312,24 @@ export function ExploreClient({
                 ? "Pencarian gagal dimuat."
                 : `${search.data?.total ?? 0} pengalaman ditemukan`}
           </p>
-          <h2 className="mt-1 text-2xl font-bold tracking-[-0.04em]">Pilihan untuk rencanamu</h2>
+          <h2 className="mt-1 text-2xl font-bold tracking-[-0.04em]">
+            Pilihan untuk rencanamu
+          </h2>
           {(date || guests) && (
-            <div className="mt-2.5 flex flex-wrap items-center gap-1.5" aria-label="Permintaan tanggal dan peserta">
-              {date && <span className="rounded-full bg-ink px-3 py-1 text-xs font-bold text-paper">{date}</span>}
-              {guests && <span className="rounded-full bg-ink px-3 py-1 text-xs font-bold text-paper">{guests}</span>}
+            <div
+              className="mt-2.5 flex flex-wrap items-center gap-1.5"
+              aria-label="Permintaan tanggal dan peserta"
+            >
+              {date && (
+                <span className="rounded-full bg-ink px-3 py-1 text-xs font-bold text-paper">
+                  {date}
+                </span>
+              )}
+              {guests && (
+                <span className="rounded-full bg-ink px-3 py-1 text-xs font-bold text-paper">
+                  {guests}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -186,11 +341,17 @@ export function ExploreClient({
           <SlidersHorizontal size={16} /> Reset
         </button>
       </div>
-
       {loading ? (
-        <div className="mt-7 grid animate-pulse gap-5 md:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label="Memuat hasil">
+        <div
+          className="mt-7 grid animate-pulse gap-5 md:grid-cols-2 lg:grid-cols-3"
+          aria-busy="true"
+          aria-label="Memuat hasil"
+        >
           {[0, 1, 2].map((i) => (
-            <div key={i} className="overflow-hidden rounded-[16px] border border-line">
+            <div
+              key={i}
+              className="overflow-hidden rounded-[16px] border border-line"
+            >
               <div className="aspect-[1.12] bg-soft" />
               <div className="space-y-3 p-5">
                 <div className="h-4 w-3/4 rounded-full bg-line" />
@@ -201,10 +362,10 @@ export function ExploreClient({
         </div>
       ) : failed ? (
         <div className="mt-7 rounded-[16px] border border-line bg-paper px-6 py-14 text-center">
-          <p className="text-lg font-bold">API tidak terjangkau.</p>
+          <p className="text-lg font-bold">Aktivitas belum bisa dimuat.</p>
           <p className="mx-auto mt-2 max-w-[440px] text-sm leading-6 text-ink/55">
-            Pastikan backend jalan (<code className="font-mono text-xs">npm run api</code>) dan
-            env <code className="font-mono text-xs">NEXT_PUBLIC_API_URL</code> benar, lalu muat ulang.
+            Periksa koneksi, lalu coba lagi. Filter harga minimum harus lebih
+            kecil dari harga maksimum.
           </p>
           <button
             type="button"
@@ -215,7 +376,10 @@ export function ExploreClient({
           </button>
         </div>
       ) : results.length ? (
-        <motion.div layout className="mt-7 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <motion.div
+          layout
+          className="mt-7 grid gap-5 md:grid-cols-2 lg:grid-cols-3"
+        >
           <AnimatePresence mode="popLayout" initial={false}>
             {results.map((activity, i) => (
               <motion.div
@@ -235,7 +399,8 @@ export function ExploreClient({
         <div className="mt-7 rounded-[16px] border border-dashed border-line bg-paper px-6 py-14 text-center">
           <p className="text-lg font-bold">Tidak ada hasil yang cocok.</p>
           <p className="mx-auto mt-2 max-w-[420px] text-sm leading-6 text-ink/55">
-            Coba kata kunci lain seperti “rafting”, “Lembang”, atau reset filter.
+            Coba kata kunci lain seperti “rafting”, “Lembang”, atau reset
+            filter.
           </p>
           <button
             type="button"
@@ -245,6 +410,32 @@ export function ExploreClient({
             Reset pencarian
           </button>
         </div>
+      )}{" "}
+      {search.data && search.data.total > search.data.pageSize && (
+        <nav
+          aria-label="Halaman aktivitas"
+          className="mt-10 flex items-center justify-center gap-4"
+        >
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage((value) => value - 1)}
+          >
+            Sebelumnya
+          </button>
+          <span className="text-sm">
+            {page} / {Math.ceil(search.data.total / search.data.pageSize)}
+          </span>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={page * search.data.pageSize >= search.data.total}
+            onClick={() => setPage((value) => value + 1)}
+          >
+            Berikutnya
+          </button>
+        </nav>
       )}
     </div>
   );
@@ -270,7 +461,9 @@ function CategoryPanel({
           type="button"
           aria-pressed={category === ""}
           className={`rounded-full border px-3.5 py-2 text-sm font-semibold transition ${
-            category === "" ? "border-ink bg-ink text-paper" : "border-line text-ink/65 hover:border-ink/40"
+            category === ""
+              ? "border-ink bg-ink text-paper"
+              : "border-line text-ink/65 hover:border-ink/40"
           }`}
         >
           Semua
@@ -282,7 +475,9 @@ function CategoryPanel({
             type="button"
             aria-pressed={category === item.slug}
             className={`rounded-full border px-3.5 py-2 text-sm font-semibold transition ${
-              category === item.slug ? "border-ink bg-ink text-paper" : "border-line text-ink/65 hover:border-ink/40"
+              category === item.slug
+                ? "border-ink bg-ink text-paper"
+                : "border-line text-ink/65 hover:border-ink/40"
             }`}
           >
             {item.name}

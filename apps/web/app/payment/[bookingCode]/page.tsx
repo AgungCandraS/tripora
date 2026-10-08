@@ -11,6 +11,7 @@ import { ApiError, api, formatIDR } from "../../lib/api";
 
 interface LookupResult {
   booking_code: string;
+  guestAccessToken: string;
   status: string;
   subtotal: number;
   discount_amount: number;
@@ -20,17 +21,27 @@ interface LookupResult {
   activity?: { title: string } | null;
 }
 
-export default function PaymentPage({ params }: { params: Promise<{ bookingCode: string }> }) {
+export default function PaymentPage({
+  params,
+}: {
+  params: Promise<{ bookingCode: string }>;
+}) {
   const { bookingCode } = use(params);
   const code = decodeURIComponent(bookingCode).toUpperCase();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
 
   const lookup = useQuery({
     queryKey: ["payment-lookup", code, submitted],
-    queryFn: () => api.post<LookupResult>("/booking-lookup", { bookingCode: code, emailOrPhone: submitted ?? "" }, null),
+    queryFn: () =>
+      api.post<LookupResult>(
+        "/booking-lookup",
+        { bookingCode: code, emailOrPhone: submitted ?? "" },
+        null,
+      ),
     enabled: submitted !== null,
     retry: false,
     refetchInterval: (q) => {
@@ -45,8 +56,15 @@ export default function PaymentPage({ params }: { params: Promise<{ bookingCode:
     setBusy(true);
     setError("");
     try {
-      const pay = await api.post<{ paymentUrl: string }>("/payments", { bookingCode: booking.booking_code }, null);
-      window.open(pay.paymentUrl, "_blank", "noopener");
+      const pay = await api.post<{ paymentUrl: string }>(
+        "/payments",
+        {
+          bookingCode: booking.booking_code,
+          guestAccessToken: booking.guestAccessToken,
+        },
+        null,
+      );
+      setPaymentUrl(pay.paymentUrl);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Gagal membuka pembayaran.");
     } finally {
@@ -58,29 +76,65 @@ export default function PaymentPage({ params }: { params: Promise<{ bookingCode:
     <main className="bg-paper text-ink">
       <SiteHeader />
       <section className="mx-auto max-w-[560px] px-5 pb-24 pt-14 sm:pt-20">
-        <Link href="/my-trips" className="inline-flex items-center gap-2 text-sm font-bold text-coral-dark underline underline-offset-4">
+        <Link
+          href="/my-trips"
+          className="inline-flex items-center gap-2 text-sm font-bold text-coral-dark underline underline-offset-4"
+        >
           <ArrowLeft size={16} /> My Trips
         </Link>
-        <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.18em] text-coral-dark">Pembayaran · {code}</p>
-        <h1 className="display-text mt-2 text-3xl font-bold tracking-[-0.045em] sm:text-4xl">Status pembayaran.</h1>
+        <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.18em] text-coral-dark">
+          Pembayaran · {code}
+        </p>
+        <h1 className="display-text mt-2 text-3xl font-bold tracking-[-0.045em] sm:text-4xl">
+          Status pembayaran.
+        </h1>
 
         {submitted === null ? (
           <form
-            onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); if (email.trim()) setSubmitted(email.trim()); }}
+            onSubmit={(e: FormEvent<HTMLFormElement>) => {
+              e.preventDefault();
+              if (email.trim()) setSubmitted(email.trim());
+            }}
             className="mt-8 grid gap-3 rounded-[16px] border border-line bg-paper p-5 sm:p-6"
           >
             <label className="block">
-              <span className="text-sm font-semibold">Email / WhatsApp pemesan</span>
-              <input required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="kamu@email.com / 08…" className="mt-2 w-full rounded-[10px] border border-line bg-transparent px-3.5 py-3 text-sm outline-none focus:border-coral-dark" />
+              <span className="text-sm font-semibold">
+                Email / WhatsApp pemesan
+              </span>
+              <input
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="kamu@email.com / 08…"
+                className="mt-2 w-full rounded-[10px] border border-line bg-transparent px-3.5 py-3 text-sm outline-none focus:border-coral-dark"
+              />
             </label>
-            <button type="submit" className="rounded-[10px] bg-ink px-5 py-3 text-sm font-bold text-paper">Lihat status</button>
+            <button
+              type="submit"
+              className="rounded-[10px] bg-ink px-5 py-3 text-sm font-bold text-paper"
+            >
+              Lihat status
+            </button>
           </form>
         ) : lookup.isLoading ? (
-          <div className="mt-8 h-48 animate-pulse rounded-[16px] bg-soft" aria-busy="true" aria-label="Memuat pembayaran" />
+          <div
+            className="mt-8 h-48 animate-pulse rounded-[16px] bg-soft"
+            aria-busy="true"
+            aria-label="Memuat pembayaran"
+          />
         ) : lookup.isError || !booking ? (
-          <p className="mt-8 rounded-[16px] border border-line bg-paper p-6 text-sm text-ink/60">
-            {lookup.error instanceof ApiError ? lookup.error.message : "Booking tidak ditemukan."}
-          </p>
+          <div className="mt-8 rounded-[16px] border border-line bg-paper p-6 text-sm text-ink/60">
+            {lookup.error instanceof ApiError
+              ? lookup.error.message
+              : "Booking tidak ditemukan."}
+            <button
+              type="button"
+              onClick={() => setSubmitted(null)}
+              className="text-link mt-3"
+            >
+              Ubah email atau telepon
+            </button>
+          </div>
         ) : (
           <div className="mt-8 rounded-[16px] border border-line bg-paper p-5 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -88,15 +142,47 @@ export default function PaymentPage({ params }: { params: Promise<{ bookingCode:
               <StatusPill status={booking.status} />
             </div>
             <div className="mt-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-ink/55">Total tagihan</span><span className="font-bold">{formatIDR(booking.total_amount)}</span></div>
-              <div className="flex justify-between"><span className="text-ink/55">Via</span><span className="font-semibold">{booking.payment?.provider ?? "mayar"}</span></div>
+              <div className="flex justify-between">
+                <span className="text-ink/55">Total tagihan</span>
+                <span className="font-bold">
+                  {formatIDR(booking.total_amount)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-ink/55">Via</span>
+                <span className="font-semibold">
+                  {booking.payment?.provider ?? "mayar"}
+                </span>
+              </div>
             </div>
-            {error && <p className="mt-3 text-xs font-bold text-coral-dark" role="alert">{error}</p>}
+            {error && (
+              <p
+                className="mt-3 text-xs font-bold text-coral-dark"
+                role="alert"
+              >
+                {error}
+              </p>
+            )}
             {booking.status === "PENDING_PAYMENT" ? (
               <>
-                <button type="button" onClick={reopen} disabled={busy} className="mt-5 w-full rounded-[10px] bg-coral px-5 py-3.5 text-sm font-bold text-ink transition hover:bg-[#ed8c6b] disabled:opacity-60">
+                <button
+                  type="button"
+                  onClick={reopen}
+                  disabled={busy}
+                  className="mt-5 w-full rounded-[10px] bg-coral px-5 py-3.5 text-sm font-bold text-ink transition hover:bg-[#ed8c6b] disabled:opacity-60"
+                >
                   {busy ? "Membuka…" : "Buka halaman bayar"}
                 </button>
+                {paymentUrl && (
+                  <a
+                    href={paymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="primary-button mt-3 w-full"
+                  >
+                    Lanjut ke Mayar
+                  </a>
+                )}
                 {process.env.NEXT_PUBLIC_DEMO_PAYMENTS === "true" && (
                   <button
                     type="button"
@@ -105,10 +191,19 @@ export default function PaymentPage({ params }: { params: Promise<{ bookingCode:
                       setBusy(true);
                       setError("");
                       try {
-                        await api.post("/payments/simulate", { bookingCode: booking.booking_code }, null);
+                        await api.post(
+                          "/payments/simulate",
+                          {
+                            bookingCode: booking.booking_code,
+                            guestAccessToken: booking.guestAccessToken,
+                          },
+                          null,
+                        );
                         await lookup.refetch();
                       } catch (e) {
-                        setError(e instanceof ApiError ? e.message : "Simulasi gagal.");
+                        setError(
+                          e instanceof ApiError ? e.message : "Simulasi gagal.",
+                        );
                       } finally {
                         setBusy(false);
                       }
@@ -120,12 +215,15 @@ export default function PaymentPage({ params }: { params: Promise<{ bookingCode:
                 )}
               </>
             ) : (
-              <Link href={`/booking/${booking.booking_code}`} className="mt-5 block rounded-[10px] bg-ink px-5 py-3.5 text-center text-sm font-bold text-paper">
-                Lihat e-ticket
+              <Link
+                href={`/booking/${booking.booking_code}`}
+                className="mt-5 block rounded-[10px] bg-ink px-5 py-3.5 text-center text-sm font-bold text-paper"
+              >
+                Lihat detail pesanan
               </Link>
             )}
             <p className="mt-3 text-[11px] leading-5 text-ink/45">
-              Sukses hanya dihitung dari webhook terverifikasi backend, bukan dari halaman ini.
+              Tiket tersedia setelah pembayaran dikonfirmasi.
             </p>
           </div>
         )}

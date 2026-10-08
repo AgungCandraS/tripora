@@ -80,6 +80,12 @@ export interface ApiBooking {
   ticket?: { status: string } | null;
   review?: { id: string } | null;
   ticketToken?: string | null;
+  guestAccessToken?: string;
+  payment?: {
+    status: string;
+    expires_at: string | null;
+    payment_url?: string | null;
+  };
 }
 
 export interface ApiUser {
@@ -93,11 +99,14 @@ export interface ApiUser {
 export function imageFor(activity: ApiActivity): string {
   const key = activity.images?.[0]?.object_key;
   if (key && (key.startsWith("/") || key.startsWith("http"))) return key;
-  return "/images/activity-rafting.png";
+  return "/images/activity-placeholder.svg";
 }
 
 export function ratingText(activity: ApiActivity): string {
-  const n = typeof activity.rating_average === "string" ? Number(activity.rating_average) : activity.rating_average;
+  const n =
+    typeof activity.rating_average === "string"
+      ? Number(activity.rating_average)
+      : activity.rating_average;
   return (Math.round((n || 0) * 10) / 10).toString().replace(".", ",");
 }
 

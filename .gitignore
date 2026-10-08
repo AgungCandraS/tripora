@@ -5,6 +5,8 @@ dist/
 out/
 *.tsbuildinfo
 *.log
+__pycache__/
+*.pyc
 .env
 .env*.local
 !.env.example

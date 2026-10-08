@@ -1,7 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { WorkspaceHeader, WorkspaceShell } from "../../components/workspace-shell";
+import {
+  WorkspaceHeader,
+  WorkspaceShell,
+} from "../../components/workspace-shell";
 import { useAuth } from "../../components/providers";
 import { api } from "../../lib/api";
 
@@ -15,22 +18,29 @@ interface Log {
 }
 
 export default function AdminAuditPage() {
-  const { token } = useAuth();
+  const { authenticated, token } = useAuth();
   const query = useQuery({
     queryKey: ["admin-audit"],
     queryFn: () => api.get<{ logs: Log[] } | Log[]>("/admin/audit", token),
-    enabled: Boolean(token),
+    enabled: Boolean(authenticated),
   });
-  const logs = Array.isArray(query.data) ? query.data : (query.data?.logs ?? []);
+  const logs = Array.isArray(query.data)
+    ? query.data
+    : (query.data?.logs ?? []);
 
   return (
     <WorkspaceShell role="admin" current="/admin/audit">
       <WorkspaceHeader
         eyebrow="Audit logs"
         title="Jejak audit."
-        description="Setiap aksi kritis dan event sistem tercatat: siapa, apa, kapan. Tidak bisa dihapus." />
+        description="Setiap aksi kritis dan event sistem tercatat: siapa, apa, kapan. Tidak bisa dihapus."
+      />
       {query.isLoading ? (
-        <div className="mt-8 h-64 animate-pulse rounded-[12px] bg-paper" aria-busy="true" aria-label="Memuat audit" />
+        <div
+          className="mt-8 h-64 animate-pulse rounded-[12px] bg-paper"
+          aria-busy="true"
+          aria-label="Memuat audit"
+        />
       ) : logs.length === 0 ? (
         <p className="mt-8 rounded-[12px] border border-dashed border-line bg-paper px-5 py-10 text-center text-sm text-ink/55">
           Belum ada jejak audit.
@@ -49,10 +59,16 @@ export default function AdminAuditPage() {
             <tbody>
               {logs.map((l) => (
                 <tr key={l.id} className="border-b border-line last:border-0">
-                  <td className="px-5 py-3 text-ink/55">{new Date(l.created_at).toLocaleString("id-ID")}</td>
-                  <td className="px-5 py-3">{l.actor_user_id ? l.actor_user_id.slice(0, 8) : "system"}</td>
+                  <td className="px-5 py-3 text-ink/55">
+                    {new Date(l.created_at).toLocaleString("id-ID")}
+                  </td>
+                  <td className="px-5 py-3">
+                    {l.actor_user_id ? l.actor_user_id.slice(0, 8) : "system"}
+                  </td>
                   <td className="px-5 py-3 font-bold">{l.action}</td>
-                  <td className="px-5 py-3 text-ink/65">{l.resource_type} · {l.resource_id.slice(0, 8)}</td>
+                  <td className="px-5 py-3 text-ink/65">
+                    {l.resource_type} · {l.resource_id.slice(0, 8)}
+                  </td>
                 </tr>
               ))}
             </tbody>

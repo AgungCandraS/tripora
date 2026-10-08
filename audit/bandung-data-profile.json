@@ -1,0 +1,134 @@
+{
+  "source_file": "D:\\Project\\scrapper data\\scrapper bandung\\places.json",
+  "source_sha256": "257369255ffaba3ee6354ade29b2d348aa6f31049bf2373b85a69d233c67b9f1",
+  "record_count": 1001,
+  "unique_place_ids": 1001,
+  "duplicate_place_ids": {},
+  "duplicate_exact_normalized_names": {},
+  "category_counts": {
+    "cafe_ngopi": 417,
+    "kuliner_resto": 343,
+    "hiburan_main": 138,
+    "wisata": 103
+  },
+  "district_counts": {
+    "Bandung Wetan": 132,
+    "Kota Bandung": 83,
+    "Lengkong": 79,
+    "Lembang": 76,
+    "Sumur Bandung": 75,
+    "Braga": 62,
+    "Dago": 60,
+    "Sukajadi": 56,
+    "Coblong": 53,
+    "Andir": 32,
+    "Cicendo": 30,
+    "Batununggal": 25,
+    "Cibeunying": 24,
+    "Cimenyan": 22,
+    "Setiabudi": 21,
+    "Pangalengan": 20,
+    "Regol": 16,
+    "Bojongloa": 16,
+    "Kabupaten Bandung": 16,
+    "Astanaanyar": 14,
+    "Kiaracondong": 13,
+    "Cihampelas": 12,
+    "Punclut": 11,
+    "Buahbatu": 10,
+    "Riau": 6,
+    "Parongpong": 6,
+    "Arcamanik": 6,
+    "Bandung Kulon": 5,
+    "Antapani": 5,
+    "Gedebage": 4,
+    "Dipatiukur": 4,
+    "Ciwidey": 3,
+    "Bandung Barat": 2,
+    "Cibiru": 2
+  },
+  "populated_field_counts": {
+    "address": 1001,
+    "category_group": 1001,
+    "category_group_label": 1001,
+    "cid": 1001,
+    "district": 1001,
+    "hours_summary": 1001,
+    "latitude": 1001,
+    "longitude": 1001,
+    "maps_url": 1001,
+    "name": 1001,
+    "open_status": 1001,
+    "phone": 758,
+    "photo_url": 1001,
+    "place_id": 1001,
+    "price_tier": 1001,
+    "rating": 1001,
+    "reviews_count": 1001,
+    "source_query": 1001,
+    "sub_category": 1001,
+    "updated_at": 1001,
+    "website": 402,
+    "whatsapp": 757
+  },
+  "photo_host_counts": {
+    "images.unsplash.com": 27,
+    "lh3.googleusercontent.com": 974
+  },
+  "unique_photo_urls": 978,
+  "zero_review_count_records": 20,
+  "rating_equal_to_scraper_default_4_5": 168,
+  "price_tier_counts": {
+    "Rp 20rb - 50rb / orang": 417,
+    "Rp 35rb - 100rb / orang": 343,
+    "Rp 50rb - 150rb / wahana": 138,
+    "Rp 25rb - 75rb (Tiket Masuk)": 103
+  },
+  "open_status_counts": {
+    "Buka Normal": 811,
+    "Buka / Cek Jadwal": 106,
+    "Buka 24 Jam": 84
+  },
+  "hours_unknown_records": 106,
+  "landline_prefix_022_021_025_026_with_whatsapp": 144,
+  "valid_numeric_coordinates": 1001,
+  "scraper_default_coordinates": 0,
+  "coordinate_screening_bounds": {
+    "lat_min": -7.4,
+    "lat_max": -6.65,
+    "lng_min": 107.2,
+    "lng_max": 108.0
+  },
+  "outside_screening_bounds_candidates": [
+    {
+      "place_id": "ChIJhR5N1HroaC4ROY_0fOVgnjU",
+      "name": "Nebula Outbound Adventure",
+      "address": "Bandung, Jawa Barat",
+      "latitude": -2.44565,
+      "longitude": 117.8888
+    },
+    {
+      "place_id": "ChIJIcc6JHvJaS4RuMByAf49i48",
+      "name": "Ngopi Di Sawah",
+      "address": "Jl. Puri Cemara No.km. 72 no.90, Gadog, Kec. Megamendung, Kabupaten Bogor, Jawa Barat 16770",
+      "latitude": -6.655184,
+      "longitude": 106.868449
+    },
+    {
+      "place_id": "ChIJWZu6g5jtaS4R3ybmIrum-O4",
+      "name": "Golf1 Driving Range and Cafe @Buperta Cibubur",
+      "address": "Jl. Buperta No.1, Buperta, Cibubur, Kec. Cimanggis, Kota Depok, Jawa Barat 13720",
+      "latitude": -6.370726,
+      "longitude": 106.89693
+    }
+  ],
+  "updated_at_min": "2026-10-01 00:30:03",
+  "updated_at_max": "2026-10-01 21:13:56",
+  "limitations": [
+    "Counts measure export contents, not independently verified facts about venues.",
+    "The screening box flags candidates; use authoritative boundaries or manual review to decide inclusion.",
+    "A 4.5 rating can be genuine or a scraper fallback; this export cannot distinguish them.",
+    "Photo URLs have not been fetched; host presence does not establish authenticity, availability or reuse permission.",
+    "WhatsApp URLs are not evidence that a telephone number has an active WhatsApp account."
+  ]
+}

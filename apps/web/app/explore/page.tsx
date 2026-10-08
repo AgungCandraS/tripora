@@ -1,9 +1,28 @@
 import type { Metadata } from "next";
-import { ExploreClient } from "../components/explore-client";
+import { Suspense } from "react";
+import { PlaceExplorer } from "../components/place-explorer";
 import { SiteFooter, SiteHeader } from "../components/site-header";
 
-export const metadata: Metadata = { title: "Explore Bandung | Tripora", description: "Cari aktivitas wisata dan pengalaman lokal di Bandung Raya." };
+export const metadata: Metadata = {
+  title: "Tempat main di Bandung | Tripora",
+  description:
+    "Temukan tempat wisata, ngopi, makan, dan bermain di Bandung Raya.",
+};
 
 export default function ExplorePage() {
-  return <main><SiteHeader /><ExploreClient /><SiteFooter /></main>;
+  return (
+    <main>
+      <SiteHeader />
+      <Suspense
+        fallback={
+          <p className="public-container py-20" role="status">
+            Memuat pencarian…
+          </p>
+        }
+      >
+        <PlaceExplorer />
+      </Suspense>
+      <SiteFooter />
+    </main>
+  );
 }
