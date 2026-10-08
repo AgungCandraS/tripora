@@ -1,6 +1,8 @@
 # Deployment
 
-The repository includes deployment configurations; no public deployment was created during the 8 October 2026 checks. The current Cloudflare login only permits Pages management, and no backend hosting or production database credentials were available.
+The repository includes deployment configurations; no public deployment has been created yet. Cloudflare Workers, Render and Neon authentication now work. The connected Neon organization is managed by Vercel and rejects new projects through the Neon API. Render rejects creation of a Free Key Value instance with HTTP 402 and asks for payment information. No paid resource or production database was created.
+
+Remaining account setup: create a directly managed Neon Free organization, and resolve Render's account verification requirement or create its Free resources through the Dashboard if the account permits this without a card. The runtime values can then be configured and the services published.
 
 ## Frontend: Cloudflare Workers Free
 
@@ -23,7 +25,7 @@ node scripts/check-worker-size.cjs
 npm run deploy:cloudflare -w @tripora/web
 ```
 
-Wrangler needs authentication with Workers Scripts Edit permissions for the intended account. Store tokens locally or in GitHub secrets, never in committed files or chat. The existing Pages-only OAuth session cannot publish this Worker.
+Wrangler is now authenticated with Workers write permissions for the account configured in `apps/web/wrangler.jsonc`. OAuth credentials remain local. The public account ID is also configured in the GitHub secret `CLOUDFLARE_ACCOUNT_ID`; `CLOUDFLARE_API_TOKEN` is still required for GitHub deployment. Confirm the account uses Workers Free before publishing: the current OAuth session cannot read subscription billing details (HTTP 403).
 
 For GitHub deployment, set repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Once `deploy-cloudflare.yml` exists on the default branch, run **Deploy Cloudflare Workers** with `backend_url` set to the backend HTTPS origin. This workflow validates credentials and the Free bundle limit before publishing. Keep the Cloudflare account on the Free plan; the workflow does not change billing plans.
 
@@ -59,6 +61,8 @@ Set the payment webhook to `https://YOUR-BACKEND.onrender.com/api/v1/webhooks/ma
 
 Local checks passed for the OpenNext build, Worker dry run and upload size, Render Blueprint JSON Schema, backend container startup against an isolated PostGIS test database, and HTTP flows through the same-origin proxy. Existing booking/payment/ownership tests and the backend supervisor checks also run in CI.
 
-Actual publishing requires Workers-capable Cloudflare authentication, a backend account and a production PostgreSQL URL. After publishing, check frontend routes, login/refresh/logout cookies, backend health, webhook validation, email delivery, Worker CPU usage, and service restarts. Local startup and bundle checks are not a live deployment test.
+Actual publishing requires a directly managed Neon Free organization, Render resources on the Free plan, and confirmation that the Cloudflare account is on Workers Free. After publishing, check frontend routes, login/refresh/logout cookies, backend health, webhook validation, email delivery, Worker CPU usage, and service restarts. Local startup and bundle checks are not a live deployment test.
+
+Free service plans are not a guarantee of zero charges if a payment method is added and included quotas are exceeded. [Render's FAQ](https://render.com/docs/faq) documents supplementary charges for outbound bandwidth and build pipeline minutes. No payment method, paid plan or paid add-on is configured by this repository.
 
 The 8 October dependency check still reports 68 advisories including development tooling; `npm audit --omit=dev` reports 14 (6 high, 7 moderate, 1 low). Compatible patch updates were applied. Remaining framework/transitive advisories need targeted remediation and validation before accepting real transactions; no forced major-version upgrades were applied.
