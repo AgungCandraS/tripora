@@ -9,7 +9,10 @@
     "build:turbopack": "next build --turbopack",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:cloudflare": "node ../../scripts/build-cloudflare.cjs",
+    "preview:cloudflare": "opennextjs-cloudflare preview",
+    "deploy:cloudflare": "opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -25,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
+    "@opennextjs/cloudflare": "^1.20.9",
     "@tailwindcss/postcss": "^4.1.13",
     "@types/node": "^22.15.30",
     "@types/react": "^19.1.10",
@@ -33,6 +37,7 @@
     "eslint-config-next": "^15.5.2",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.13",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "wrangler": "^4.148.0"
   }
 }

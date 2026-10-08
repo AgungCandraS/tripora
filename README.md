@@ -138,7 +138,7 @@ Staff: daftar dulu, lalu owner invite emailnya di `/vendor/staff`.
 - **API/worker (VPS)**: `docker compose --profile apps up -d --build`
   (migrasi jalan otomatis). Daftarkan webhook
   `POST https://api-domain-anda/api/v1/webhooks/mayar?key=TOKEN_ANDA`
-  di dashboard Mayar. Detail: `docs/DEPLOYMENT.md`.
+  di dashboard Mayar. Detail: [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Tech Stack
 

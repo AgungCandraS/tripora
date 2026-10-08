@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   turbopack: {},
   images: {
+    // Workers free deployment serves local photos without a paid Images binding.
+    unoptimized: process.env.CLOUDFLARE_DEPLOY === "true",
     remotePatterns: [
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
       {

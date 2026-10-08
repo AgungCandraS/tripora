@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
+import IORedis from "ioredis";
 import { PrismaService } from "../../prisma/prisma.service";
 
 /** Thin producer around BullMQ queue "notifications". Job consumed by apps/worker. */
@@ -12,10 +13,20 @@ export class NotificationsProducer {
     private readonly config: ConfigService,
   ) {
     this.queue = new Queue("notifications", {
-      connection: {
-        host: this.config.get<string>("QUEUE_REDIS_HOST", "localhost"),
-        port: this.config.get<number>("QUEUE_REDIS_PORT", 6379),
-      },
+      connection:
+        this.config.get<string>("QUEUE_REDIS_URL") ||
+        this.config.get<string>("REDIS_URL")
+          ? new IORedis(
+              (this.config.get<string>("QUEUE_REDIS_URL") ||
+                this.config.get<string>("REDIS_URL"))!,
+              { maxRetriesPerRequest: null },
+            )
+          : {
+              host: this.config.get<string>("QUEUE_REDIS_HOST", "localhost"),
+              port: this.config.get<number>("QUEUE_REDIS_PORT", 6379),
+              password:
+                this.config.get<string>("QUEUE_REDIS_PASSWORD") || undefined,
+            },
       defaultJobOptions: {
         attempts: 3,
         backoff: { type: "exponential", delay: 2000 },

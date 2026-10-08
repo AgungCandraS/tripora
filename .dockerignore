@@ -11,3 +11,9 @@ apps/worker/dist
 coverage
 .env
 .env.local
+**/.env
+**/.env.*
+**/.env*.local
+**/.dev.vars*
+**/.wrangler
+**/.open-next

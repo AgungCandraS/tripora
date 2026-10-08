@@ -1,5 +1,5 @@
 # Tripora API (NestJS) — build dari root monorepo: docker build -f apps/api/Dockerfile .
-FROM node:20-bookworm-slim AS deps
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
@@ -8,18 +8,22 @@ COPY apps/worker/package.json apps/worker/package.json
 COPY packages ./packages
 RUN npm ci
 
-FROM node:20-bookworm-slim AS build
+FROM node:22-bookworm-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 WORKDIR /app/apps/api
+RUN npm run build -w @tripora/types
 RUN npx prisma generate
 RUN npm run build -w @tripora/api
 
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/apps/api
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules /app/node_modules
+COPY --from=build /app/packages /app/packages
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/apps/api/package.json ./package.json
 COPY --from=build /app/apps/api/prisma ./prisma

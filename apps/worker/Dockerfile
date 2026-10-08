@@ -1,5 +1,5 @@
 # Tripora Worker (BullMQ) — build dari root monorepo: docker build -f apps/worker/Dockerfile .
-FROM node:20-bookworm-slim AS deps
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
@@ -8,14 +8,15 @@ COPY apps/worker/package.json apps/worker/package.json
 COPY packages ./packages
 RUN npm ci
 
-FROM node:20-bookworm-slim AS build
+FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 WORKDIR /app/apps/worker
+RUN npm run build -w @tripora/types
 RUN npm run build -w @tripora/worker
 
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app/apps/worker
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules /app/node_modules

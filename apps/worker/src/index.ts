@@ -3,9 +3,12 @@ import IORedis from "ioredis";
 import { deliverNotification, reconcile } from "./lifecycle";
 
 function makeRedis() {
+  const url = process.env.QUEUE_REDIS_URL ?? process.env.REDIS_URL;
+  if (url) return new IORedis(url, { maxRetriesPerRequest: null });
   return new IORedis({
     host: process.env.QUEUE_REDIS_HOST ?? "localhost",
     port: Number(process.env.QUEUE_REDIS_PORT ?? 6379),
+    password: process.env.QUEUE_REDIS_PASSWORD || undefined,
     maxRetriesPerRequest: null,
   });
 }
